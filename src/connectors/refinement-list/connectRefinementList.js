@@ -1,56 +1,18 @@
-import { checkRendering } from '../../lib/utils.js';
-import { tagConfig, escapeFacets } from '../../lib/escape-highlight.js';
-import isEqual from 'lodash/isEqual';
+import {
+  checkRendering,
+  createDocumentationMessageGenerator,
+  noop,
+} from '../../lib/utils';
+import {
+  escapeFacets,
+  TAG_PLACEHOLDER,
+  TAG_REPLACEMENT,
+} from '../../lib/escape-highlight';
 
-const usage = `Usage:
-var customRefinementList = connectRefinementList(function render(params) {
-  // params = {
-  //   isFromSearch,
-  //   createURL,
-  //   items,
-  //   refine,
-  //   searchForItems,
-  //   instantSearchInstance,
-  //   canRefine,
-  //   toggleShowMore,
-  //   isShowingMore,
-  //   widgetParams,
-  // }
+const withUsage = createDocumentationMessageGenerator({
+  name: 'refinement-list',
+  connector: true,
 });
-
-search.addWidget(
-  customRefinementList({
-    attributeName,
-    [ operator = 'or' ],
-    [ limit ],
-    [ showMoreLimit ],
-    [ sortBy = ['isRefined', 'count:desc', 'name:asc'] ],
-    [ escapeFacetValues = false ],
-    [ transformItems ]
-  })
-);
-
-Full documentation available at https://community.algolia.com/instantsearch.js/v2/connectors/connectRefinementList.html
-`;
-
-export const checkUsage = ({
-  attributeName,
-  operator,
-  showMoreLimit,
-  limit,
-  message,
-}) => {
-  const noAttributeName = attributeName === undefined;
-  const invalidOperator = !/^(and|or)$/.test(operator);
-  const invalidShowMoreLimit =
-    showMoreLimit !== undefined
-      ? isNaN(showMoreLimit) || showMoreLimit < limit
-      : false;
-
-  if (noAttributeName || invalidOperator || invalidShowMoreLimit) {
-    throw new Error(message);
-  }
-};
 
 /**
  * @typedef {Object} RefinementListItem
@@ -62,14 +24,15 @@ export const checkUsage = ({
 
 /**
  * @typedef {Object} CustomRefinementListWidgetOptions
- * @property {string} attributeName The name of the attribute in the records.
+ * @property {string} attribute The name of the attribute in the records.
  * @property {"and"|"or"} [operator = 'or'] How the filters are combined together.
  * @property {number} [limit = 10] The max number of items to display when
  * `showMoreLimit` is not set or if the widget is showing less value.
- * @property {number} [showMoreLimit] The max number of items to display if the widget
+ * @property {boolean} [showMore = false] Whether to display a button that expands the number of items.
+ * @property {number} [showMoreLimit = 20] The max number of items to display if the widget
  * is showing more items.
  * @property {string[]|function} [sortBy = ['isRefined', 'count:desc', 'name:asc']] How to sort refinements. Possible values: `count|isRefined|name:asc|name:desc`.
- * @property {boolean} [escapeFacetValues = false] Escapes the content of the facet values.
+ * @property {boolean} [escapeFacetValues = true] Escapes the content of the facet values.
  * @property {function(object[]):object[]} [transformItems] Function to transform the items passed to the templates.
  */
 
@@ -142,35 +105,46 @@ export const checkUsage = ({
  * var customRefinementList = instantsearch.connectors.connectRefinementList(renderFn);
  *
  * // mount widget on the page
- * search.addWidget(
+ * search.addWidgets([
  *   customRefinementList({
  *     containerNode: $('#custom-refinement-list-container'),
- *     attributeName: 'categories',
+ *     attribute: 'categories',
  *     limit: 10,
  *   })
- * );
+ * ]);
  */
-export default function connectRefinementList(renderFn, unmountFn) {
-  checkRendering(renderFn, usage);
+export default function connectRefinementList(renderFn, unmountFn = noop) {
+  checkRendering(renderFn, withUsage());
 
   return (widgetParams = {}) => {
     const {
-      attributeName,
+      attribute,
       operator = 'or',
       limit = 10,
-      showMoreLimit,
+      showMore = false,
+      showMoreLimit = 20,
       sortBy = ['isRefined', 'count:desc', 'name:asc'],
-      escapeFacetValues = false,
+      escapeFacetValues = true,
       transformItems = items => items,
     } = widgetParams;
 
-    checkUsage({
-      message: usage,
-      attributeName,
-      operator,
-      showMoreLimit,
-      limit,
-    });
+    if (!attribute) {
+      throw new Error(withUsage('The `attribute` option is required.'));
+    }
+
+    if (!/^(and|or)$/.test(operator)) {
+      throw new Error(
+        withUsage(
+          `The \`operator\` must one of: \`"and"\`, \`"or"\` (got "${operator}").`
+        )
+      );
+    }
+
+    if (showMore === true && showMoreLimit <= limit) {
+      throw new Error(
+        withUsage('`showMoreLimit` should be greater than `limit`.')
+      );
+    }
 
     const formatItems = ({ name: label, ...item }) => ({
       ...item,
@@ -178,6 +152,12 @@ export default function connectRefinementList(renderFn, unmountFn) {
       value: label,
       highlighted: label,
     });
+    const getLimit = isShowingMore => (isShowingMore ? showMoreLimit : limit);
+
+    let lastResultsFromMainSearch = [];
+    let hasExhaustiveItems = true;
+    let searchForFacetValues;
+    let triggerRefine;
 
     const render = ({
       items,
@@ -189,12 +169,11 @@ export default function connectRefinementList(renderFn, unmountFn) {
       isFirstSearch,
       isShowingMore,
       toggleShowMore,
-      hasExhaustiveItems,
       instantSearchInstance,
     }) => {
       // Compute a specific createURL method able to link to any facet value state change
       const _createURL = facetValue =>
-        createURL(state.toggleRefinement(attributeName, facetValue));
+        createURL(state.toggleRefinement(attribute, facetValue));
 
       // Do not mistake searchForFacetValues and searchFacetValues which is the actual search
       // function
@@ -205,8 +184,15 @@ export default function connectRefinementList(renderFn, unmountFn) {
           createURL,
           helperSpecializedSearchFacetValues,
           refine,
-          instantSearchInstance
+          instantSearchInstance,
+          isShowingMore
         );
+
+      const canShowLess =
+        isShowingMore && lastResultsFromMainSearch.length > limit;
+      const canShowMore = showMore && !isFromSearch && !hasExhaustiveItems;
+
+      const canToggleShowMore = canShowLess || canShowMore;
 
       renderFn(
         {
@@ -219,9 +205,7 @@ export default function connectRefinementList(renderFn, unmountFn) {
           canRefine: isFromSearch || items.length > 0,
           widgetParams,
           isShowingMore,
-          canToggleShowMore: showMoreLimit
-            ? isShowingMore || !hasExhaustiveItems
-            : false,
+          canToggleShowMore,
           toggleShowMore,
           hasExhaustiveItems,
         },
@@ -229,16 +213,14 @@ export default function connectRefinementList(renderFn, unmountFn) {
       );
     };
 
-    let lastResultsFromMainSearch;
-    let searchForFacetValues;
-    let refine;
-
-    const createSearchForFacetValues = helper => (
+    /* eslint-disable max-params */
+    const createSearchForFacetValues = (helper, toggleShowMore) => (
       state,
       createURL,
       helperSpecializedSearchFacetValues,
       toggleRefinement,
-      instantSearchInstance
+      instantSearchInstance,
+      isShowingMore
     ) => query => {
       if (query === '' && lastResultsFromMainSearch) {
         // render with previous data from the helper.
@@ -251,20 +233,21 @@ export default function connectRefinementList(renderFn, unmountFn) {
           isFromSearch: false,
           isFirstSearch: false,
           instantSearchInstance,
-          hasExhaustiveItems: false, // SFFV should not be used with show more
+          toggleShowMore, // and yet it will be
+          isShowingMore, // so we need to restore in the state of show more as well
         });
       } else {
         const tags = {
           highlightPreTag: escapeFacetValues
-            ? tagConfig.highlightPreTag
-            : undefined,
+            ? TAG_PLACEHOLDER.highlightPreTag
+            : TAG_REPLACEMENT.highlightPreTag,
           highlightPostTag: escapeFacetValues
-            ? tagConfig.highlightPostTag
-            : undefined,
+            ? TAG_PLACEHOLDER.highlightPostTag
+            : TAG_REPLACEMENT.highlightPostTag,
         };
 
         helper
-          .searchForFacetValues(attributeName, query, limit, tags)
+          .searchForFacetValues(attribute, query, getLimit(isShowingMore), tags)
           .then(results => {
             const facetValues = escapeFacetValues
               ? escapeFacets(results.facetHits)
@@ -287,13 +270,16 @@ export default function connectRefinementList(renderFn, unmountFn) {
               isFromSearch: true,
               isFirstSearch: false,
               instantSearchInstance,
-              hasExhaustiveItems: false, // SFFV should not be used with show more
+              isShowingMore,
             });
           });
       }
     };
+    /* eslint-enable max-params */
 
     return {
+      $$type: 'ais.refinementList',
+
       isShowingMore: false,
 
       // Provide the same function to the `renderFn` so that way the user
@@ -311,55 +297,31 @@ export default function connectRefinementList(renderFn, unmountFn) {
       },
 
       getLimit() {
-        return this.isShowingMore ? showMoreLimit : limit;
-      },
-
-      getConfiguration: (configuration = {}) => {
-        const widgetConfiguration = {
-          [operator === 'and' ? 'facets' : 'disjunctiveFacets']: [
-            attributeName,
-          ],
-        };
-
-        if (limit !== undefined) {
-          const currentMaxValuesPerFacet = configuration.maxValuesPerFacet || 0;
-          if (showMoreLimit === undefined) {
-            widgetConfiguration.maxValuesPerFacet = Math.max(
-              currentMaxValuesPerFacet,
-              limit
-            );
-          } else {
-            widgetConfiguration.maxValuesPerFacet = Math.max(
-              currentMaxValuesPerFacet,
-              limit,
-              showMoreLimit
-            );
-          }
-        }
-
-        return widgetConfiguration;
+        return getLimit(this.isShowingMore);
       },
 
       init({ helper, createURL, instantSearchInstance }) {
         this.cachedToggleShowMore = this.cachedToggleShowMore.bind(this);
 
-        refine = facetValue =>
-          helper.toggleRefinement(attributeName, facetValue).search();
+        triggerRefine = facetValue =>
+          helper.toggleRefinement(attribute, facetValue).search();
 
-        searchForFacetValues = createSearchForFacetValues(helper);
+        searchForFacetValues = createSearchForFacetValues(
+          helper,
+          this.cachedToggleShowMore
+        );
 
         render({
           items: [],
           state: helper.state,
           createURL,
           helperSpecializedSearchFacetValues: searchForFacetValues,
-          refine,
+          refine: triggerRefine,
           isFromSearch: false,
           isFirstSearch: true,
           instantSearchInstance,
           isShowingMore: this.isShowingMore,
           toggleShowMore: this.cachedToggleShowMore,
-          hasExhaustiveItems: true,
         });
       },
 
@@ -371,14 +333,12 @@ export default function connectRefinementList(renderFn, unmountFn) {
           instantSearchInstance,
         } = renderOptions;
 
-        const facetValues = results.getFacetValues(attributeName, { sortBy });
+        const facetValues = results.getFacetValues(attribute, { sortBy }) || [];
         const items = transformItems(
           facetValues.slice(0, this.getLimit()).map(formatItems)
         );
 
-        const maxValuesPerFacetConfig = state.getQueryParameter(
-          'maxValuesPerFacet'
-        );
+        const maxValuesPerFacetConfig = state.maxValuesPerFacet;
         const currentLimit = this.getLimit();
         // If the limit is the max number of facet retrieved it is impossible to know
         // if the facets are exhaustive. The only moment we are sure it is exhaustive
@@ -386,7 +346,7 @@ export default function connectRefinementList(renderFn, unmountFn) {
         // widget has requested more values (maxValuesPerFacet > getLimit()).
         // Because this is used for making the search of facets unable or not, it is important
         // to be conservative here.
-        const hasExhaustiveItems =
+        hasExhaustiveItems =
           maxValuesPerFacetConfig > currentLimit
             ? facetValues.length <= currentLimit
             : facetValues.length < currentLimit;
@@ -400,41 +360,35 @@ export default function connectRefinementList(renderFn, unmountFn) {
           state,
           createURL,
           helperSpecializedSearchFacetValues: searchForFacetValues,
-          refine,
+          refine: triggerRefine,
           isFromSearch: false,
           isFirstSearch: false,
           instantSearchInstance,
           isShowingMore: this.isShowingMore,
           toggleShowMore: this.cachedToggleShowMore,
-          hasExhaustiveItems,
         });
       },
 
       dispose({ state }) {
         unmountFn();
 
+        const withoutMaxValuesPerFacet = state.setQueryParameter(
+          'maxValuesPerFacet',
+          undefined
+        );
         if (operator === 'and') {
-          return state
-            .removeFacetRefinement(attributeName)
-            .removeFacet(attributeName);
-        } else {
-          return state
-            .removeDisjunctiveFacetRefinement(attributeName)
-            .removeDisjunctiveFacet(attributeName);
+          return withoutMaxValuesPerFacet.removeFacet(attribute);
         }
+        return withoutMaxValuesPerFacet.removeDisjunctiveFacet(attribute);
       },
 
       getWidgetState(uiState, { searchParameters }) {
         const values =
           operator === 'or'
-            ? searchParameters.getDisjunctiveRefinements(attributeName)
-            : searchParameters.getConjunctiveRefinements(attributeName);
+            ? searchParameters.getDisjunctiveRefinements(attribute)
+            : searchParameters.getConjunctiveRefinements(attribute);
 
-        if (
-          values.length === 0 ||
-          (uiState.refinementList &&
-            isEqual(values, uiState.refinementList[attributeName]))
-        ) {
+        if (!values.length) {
           return uiState;
         }
 
@@ -442,21 +396,53 @@ export default function connectRefinementList(renderFn, unmountFn) {
           ...uiState,
           refinementList: {
             ...uiState.refinementList,
-            [attributeName]: values,
+            [attribute]: values,
           },
         };
       },
 
       getWidgetSearchParameters(searchParameters, { uiState }) {
+        const isDisjunctive = operator === 'or';
         const values =
-          uiState.refinementList && uiState.refinementList[attributeName];
-        if (values === undefined) return searchParameters;
+          uiState.refinementList && uiState.refinementList[attribute];
+
+        const withoutRefinements = searchParameters.clearRefinements(attribute);
+        const withFacetConfiguration = isDisjunctive
+          ? withoutRefinements.addDisjunctiveFacet(attribute)
+          : withoutRefinements.addFacet(attribute);
+
+        const currentMaxValuesPerFacet =
+          withFacetConfiguration.maxValuesPerFacet || 0;
+
+        const nextMaxValuesPerFacet = Math.max(
+          currentMaxValuesPerFacet,
+          showMore ? showMoreLimit : limit
+        );
+
+        const withMaxValuesPerFacet = withFacetConfiguration.setQueryParameter(
+          'maxValuesPerFacet',
+          nextMaxValuesPerFacet
+        );
+
+        if (!values) {
+          const key = isDisjunctive
+            ? 'disjunctiveFacetsRefinements'
+            : 'facetsRefinements';
+
+          return withMaxValuesPerFacet.setQueryParameters({
+            [key]: {
+              ...withMaxValuesPerFacet[key],
+              [attribute]: [],
+            },
+          });
+        }
+
         return values.reduce(
-          (sp, v) =>
-            operator === 'or'
-              ? sp.addDisjunctiveFacetRefinement(attributeName, v)
-              : sp.addFacetRefinement(attributeName, v),
-          searchParameters.clearRefinements(attributeName)
+          (parameters, value) =>
+            isDisjunctive
+              ? parameters.addDisjunctiveFacetRefinement(attribute, value)
+              : parameters.addFacetRefinement(attribute, value),
+          withMaxValuesPerFacet
         );
       },
     };

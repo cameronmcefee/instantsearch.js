@@ -1,14 +1,37 @@
-import expect from 'expect';
-import sinon from 'sinon';
+import { render } from 'preact';
+import getContainerNode from '../../../lib/utils/getContainerNode';
 import pagination from '../pagination';
 
-describe('pagination call', () => {
-  it('throws an exception when no container', () => {
-    expect(pagination.bind(null)).toThrow(/^Usage/);
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
+
+jest.mock('../../../lib/utils/getContainerNode', () => {
+  const module = require.requireActual('../../../lib/utils/getContainerNode');
+
+  const _getContainerNode = module.default;
+  module.default = jest.fn((...args) => _getContainerNode(...args));
+
+  return module;
+});
+
+describe('Usage', () => {
+  it('throws without container', () => {
+    expect(() => {
+      pagination({ container: undefined });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/pagination/js/"
+`);
   });
 });
+
 describe('pagination()', () => {
-  let ReactDOM;
   let container;
   let widget;
   let results;
@@ -16,21 +39,23 @@ describe('pagination()', () => {
   let cssClasses;
 
   beforeEach(() => {
-    ReactDOM = { render: sinon.spy() };
-    pagination.__Rewire__('render', ReactDOM.render);
+    render.mockClear();
+    getContainerNode.mockClear();
 
     container = document.createElement('div');
     cssClasses = {
-      root: ['root', 'cx'],
+      root: ['root', 'customRoot'],
+      noRefinementRoot: 'noRefinementRoot',
+      list: 'list',
       item: 'item',
+      firstPageItem: 'firstPageItem',
+      lastPageItem: 'lastPageItem',
+      previousPageItem: 'previousPageItem',
+      nextPageItem: 'nextPageItem',
+      pageItem: 'pageItem',
+      selectedItem: 'selectedItem',
+      disabledItem: 'disabledItem',
       link: 'link',
-      page: 'page',
-      previous: 'previous',
-      next: 'next',
-      first: 'first',
-      last: 'last',
-      active: 'active',
-      disabled: 'disabled',
     };
     widget = pagination({ container, scrollTo: false, cssClasses });
     results = {
@@ -40,85 +65,66 @@ describe('pagination()', () => {
       nbPages: 20,
     };
     helper = {
-      setPage: sinon.spy(),
-      search: sinon.spy(),
-      getPage: () => 0,
+      setPage: jest.fn(),
+      search: jest.fn(),
+      state: {},
     };
     widget.init({ helper });
   });
 
-  it('configures nothing', () => {
-    expect(widget.getConfiguration).toEqual(undefined);
-  });
-
   it('sets the page', () => {
     widget.refine(helper, 42);
-    expect(helper.setPage.calledOnce).toBe(true);
-    expect(helper.search.calledOnce).toBe(true);
+    expect(helper.setPage).toHaveBeenCalledTimes(1);
+    expect(helper.search).toHaveBeenCalledTimes(1);
   });
 
-  it('calls twice ReactDOM.render(<Pagination props />, container)', () => {
+  it('calls twice render(<Pagination props />, container)', () => {
     widget.render({ results, helper, state: { page: 0 } });
     widget.render({ results, helper, state: { page: 0 } });
 
-    expect(ReactDOM.render.calledTwice).toBe(
-      true,
-      'ReactDOM.render called twice'
-    );
-    expect(ReactDOM.render.firstCall.args[0]).toMatchSnapshot();
-    expect(ReactDOM.render.firstCall.args[1]).toEqual(container);
-    expect(ReactDOM.render.secondCall.args[0]).toMatchSnapshot();
-    expect(ReactDOM.render.secondCall.args[1]).toEqual(container);
+    const [firstRender, secondRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(2);
+    expect(firstRender[0].props).toMatchSnapshot();
+    expect(firstRender[1]).toEqual(container);
+    expect(secondRender[0].props).toMatchSnapshot();
+    expect(secondRender[1]).toEqual(container);
   });
 
   describe('mocking getContainerNode', () => {
     let scrollIntoView;
 
     beforeEach(() => {
-      scrollIntoView = sinon.spy();
-      const getContainerNode = sinon.stub().returns({
-        scrollIntoView,
-      });
-      pagination.__Rewire__('getContainerNode', getContainerNode);
+      scrollIntoView = jest.fn();
     });
 
     it('should not scroll', () => {
       widget = pagination({ container, scrollTo: false });
       widget.init({ helper });
       widget.refine(helper, 2);
-      expect(scrollIntoView.calledOnce).toBe(
-        false,
-        'scrollIntoView never called'
-      );
+      expect(scrollIntoView).toHaveBeenCalledTimes(0);
     });
 
     it('should scroll to body', () => {
+      getContainerNode.mockImplementation(input =>
+        input === 'body' ? { scrollIntoView } : input
+      );
+
       widget = pagination({ container });
+
       widget.init({ helper });
       widget.render({ results, helper, state: { page: 0 } });
-      const {
-        props: { setCurrentPage },
-      } = ReactDOM.render.firstCall.args[0];
-      setCurrentPage(2);
-      expect(scrollIntoView.calledOnce).toBe(
-        true,
-        'scrollIntoView called once'
-      );
-    });
 
-    afterEach(() => {
-      pagination.__ResetDependency__('utils');
-    });
-  });
+      const [firstRender] = render.mock.calls;
 
-  afterEach(() => {
-    pagination.__ResetDependency__('render');
-    pagination.__ResetDependency__('autoHideContainerHOC');
+      firstRender[0].props.setCurrentPage(2);
+
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
   });
 });
 
 describe('pagination MaxPage', () => {
-  let ReactDOM;
   let container;
   let widget;
   let results;
@@ -126,21 +132,20 @@ describe('pagination MaxPage', () => {
   let paginationOptions;
 
   beforeEach(() => {
-    ReactDOM = { render: sinon.spy() };
-    pagination.__Rewire__('render', ReactDOM.render);
-
     container = document.createElement('div');
     cssClasses = {
       root: 'root',
+      noRefinementRoot: 'noRefinementRoot',
+      list: 'list',
       item: 'item',
+      firstPageItem: 'firstPageItem',
+      lastPageItem: 'lastPageItem',
+      previousPageItem: 'previousPageItem',
+      nextPageItem: 'nextPageItem',
+      pageItem: 'pageItem',
+      selectedItem: 'selectedItem',
+      disabledItem: 'disabledItem',
       link: 'link',
-      page: 'page',
-      previous: 'previous',
-      next: 'next',
-      first: 'first',
-      last: 'last',
-      active: 'active',
-      disabled: 'disabled',
     };
     results = {
       hits: [{ first: 'hit', second: 'hit' }],
@@ -153,18 +158,21 @@ describe('pagination MaxPage', () => {
 
   it('does to have any default', () => {
     widget = pagination(paginationOptions);
+
     expect(widget.getMaxPage(results)).toEqual(30);
   });
 
-  it('does reduce the number of page if lower than nbPages', () => {
-    paginationOptions.maxPages = 20;
+  it('does reduce the number of pages if lower than nbPages', () => {
+    paginationOptions.totalPages = 20;
     widget = pagination(paginationOptions);
+
     expect(widget.getMaxPage(results)).toEqual(20);
   });
 
-  it('does not reduce the number of page if greater than nbPages', () => {
-    paginationOptions.maxPages = 40;
+  it('does not reduce the number of pages if greater than nbPages', () => {
+    paginationOptions.totalPages = 40;
     widget = pagination(paginationOptions);
+
     expect(widget.getMaxPage(results)).toEqual(30);
   });
 });

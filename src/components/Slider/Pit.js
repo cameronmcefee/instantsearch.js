@@ -1,4 +1,6 @@
-import React from 'preact-compat';
+/** @jsx h */
+
+import { h } from 'preact';
 import PropTypes from 'prop-types';
 import cx from 'classnames';
 
@@ -10,21 +12,16 @@ const Pit = ({ style, children }) => {
   // Children could be an array, unwrap the value if it's the case
   // see: https://github.com/developit/preact-compat/issues/436
   const value = Array.isArray(children) ? children[0] : children;
-  const pitValue = Math.round(parseFloat(value) * 100) / 100;
+  const pitValue = Math.round(parseInt(value, 10) * 100) / 100;
 
   return (
     <div
       style={{ ...style, marginLeft: positionValue === 100 ? '-2px' : 0 }}
-      className={cx(
-        'ais-range-slider--marker ais-range-slider--marker-horizontal',
-        {
-          'ais-range-slider--marker-large': shouldDisplayValue,
-        }
-      )}
+      className={cx('rheostat-marker', 'rheostat-marker-horizontal', {
+        'rheostat-marker-large': shouldDisplayValue,
+      })}
     >
-      {shouldDisplayValue ? (
-        <div className="ais-range-slider--value">{pitValue}</div>
-      ) : null}
+      {shouldDisplayValue && <div className={'rheostat-value'}>{pitValue}</div>}
     </div>
   );
 };

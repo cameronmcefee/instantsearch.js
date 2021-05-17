@@ -1,27 +1,21 @@
-import React, { render, unmountComponentAtNode } from 'preact-compat';
+/** @jsx h */
+
+import { h, render } from 'preact';
 import cx from 'classnames';
-
-import Stats from '../../components/Stats/Stats.js';
-import connectStats from '../../connectors/stats/connectStats.js';
-import defaultTemplates from './defaultTemplates.js';
-
+import Stats from '../../components/Stats/Stats';
+import connectStats from '../../connectors/stats/connectStats';
+import defaultTemplates from './defaultTemplates';
 import {
-  bemHelper,
   prepareTemplateProps,
   getContainerNode,
-} from '../../lib/utils.js';
+  createDocumentationMessageGenerator,
+} from '../../lib/utils';
+import { component } from '../../lib/suit';
 
-const bem = bemHelper('ais-stats');
+const withUsage = createDocumentationMessageGenerator({ name: 'stats' });
+const suit = component('Stats');
 
-const renderer = ({
-  containerNode,
-  cssClasses,
-  collapsible,
-  autoHideContainer,
-  renderState,
-  templates,
-  transformData,
-}) => (
+const renderer = ({ containerNode, cssClasses, renderState, templates }) => (
   {
     hitsPerPage,
     nbHits,
@@ -35,19 +29,16 @@ const renderer = ({
 ) => {
   if (isFirstRendering) {
     renderState.templateProps = prepareTemplateProps({
-      transformData,
       defaultTemplates,
       templatesConfig: instantSearchInstance.templatesConfig,
       templates,
     });
+
     return;
   }
 
-  const shouldAutoHideContainer = autoHideContainer && nbHits === 0;
-
   render(
     <Stats
-      collapsible={collapsible}
       cssClasses={cssClasses}
       hitsPerPage={hitsPerPage}
       nbHits={nbHits}
@@ -55,46 +46,26 @@ const renderer = ({
       page={page}
       processingTimeMS={processingTimeMS}
       query={query}
-      shouldAutoHideContainer={shouldAutoHideContainer}
       templateProps={renderState.templateProps}
     />,
     containerNode
   );
 };
 
-const usage = `Usage:
-stats({
-  container,
-  [ templates.{header, body, footer} ],
-  [ transformData.{body} ],
-  [ autoHideContainer=true ],
-  [ cssClasses.{root, header, body, footer, time} ],
-})`;
-
 /**
  * @typedef {Object} StatsWidgetTemplates
- * @property {string|function} [header=''] Header template.
- * @property {string|function} [body] Body template, provided with `hasManyResults`,
+ * @property {string|function} [text] Text template, provided with `hasManyResults`,
  * `hasNoResults`, `hasOneResult`, `hitsPerPage`, `nbHits`, `nbPages`, `page`, `processingTimeMS`, `query`.
- * @property {string|function} [footer=''] Footer template.
  */
 
 /**
  * @typedef {Object} StatsWidgetCssClasses
  * @property {string|string[]} [root] CSS class to add to the root element.
- * @property {string|string[]} [header] CSS class to add to the header element.
- * @property {string|string[]} [body] CSS class to add to the body element.
- * @property {string|string[]} [footer] CSS class to add to the footer element.
- * @property {string|string[]} [time] CSS class to add to the element wrapping the time processingTimeMs.
+ * @property {string|string[]} [text] CSS class to add to the text span element.
  */
 
 /**
- * @typedef {Object} StatsWidgetTransforms
- * @property {function(StatsBodyData):object} [body] Updates the content of object passed to the `body` template.
- */
-
-/**
- * @typedef {Object} StatsBodyData
+ * @typedef {Object} StatsTextData
  * @property {boolean} hasManyResults True if the result set has more than one result.
  * @property {boolean} hasNoResults True if the result set has no result.
  * @property {boolean} hasOneResult True if the result set has exactly one result.
@@ -110,8 +81,6 @@ stats({
  * @typedef {Object} StatsWidgetOptions
  * @property {string|HTMLElement} container Place where to insert the widget in your webpage.
  * @property {StatsWidgetTemplates} [templates] Templates to use for the widget.
- * @property {StatsWidgetTransforms} [transformData] Object that contains the functions to be applied on the data * before being used for templating. Valid keys are `body` for the body template.
- * @property {boolean} [autoHideContainer=true] Make the widget hides itself when there is no results matching.
  * @property {StatsWidgetCssClasses} [cssClasses] CSS classes to add.
  */
 
@@ -126,50 +95,38 @@ stats({
  * @param {StatsWidgetOptions} $0 Stats widget options. Some keys are mandatory: `container`,
  * @return {Widget} A new stats widget instance
  * @example
- * search.addWidget(
+ * search.addWidgets([
  *   instantsearch.widgets.stats({
  *     container: '#stats-container'
  *   })
- * );
+ * ]);
  */
 export default function stats({
   container,
   cssClasses: userCssClasses = {},
-  autoHideContainer = true,
-  collapsible = false,
-  transformData,
   templates = defaultTemplates,
 } = {}) {
   if (!container) {
-    throw new Error(usage);
+    throw new Error(withUsage('The `container` option is required.'));
   }
 
   const containerNode = getContainerNode(container);
 
   const cssClasses = {
-    body: cx(bem('body'), userCssClasses.body),
-    footer: cx(bem('footer'), userCssClasses.footer),
-    header: cx(bem('header'), userCssClasses.header),
-    root: cx(bem(null), userCssClasses.root),
-    time: cx(bem('time'), userCssClasses.time),
+    root: cx(suit(), userCssClasses.root),
+    text: cx(suit({ descendantName: 'text' }), userCssClasses.text),
   };
 
   const specializedRenderer = renderer({
     containerNode,
     cssClasses,
-    collapsible,
-    autoHideContainer,
     renderState: {},
     templates,
-    transformData,
   });
 
-  try {
-    const makeWidget = connectStats(specializedRenderer, () =>
-      unmountComponentAtNode(containerNode)
-    );
-    return makeWidget();
-  } catch (e) {
-    throw new Error(usage);
-  }
+  const makeWidget = connectStats(specializedRenderer, () =>
+    render(null, containerNode)
+  );
+
+  return makeWidget();
 }

@@ -1,20 +1,13 @@
-import times from 'lodash/times';
-import range from 'lodash/range';
-import has from 'lodash/has';
+/** @jsx h */
 
+import { h, Component } from 'preact';
+import Rheostat from './Rheostat';
 import PropTypes from 'prop-types';
-
-import React, { Component } from 'preact-compat';
-
-import Rheostat from 'preact-rheostat';
 import cx from 'classnames';
+import { range } from '../../lib/utils';
+import Pit from './Pit';
 
-import Pit from './Pit.js';
-
-import autoHideContainerHOC from '../../decorators/autoHideContainer.js';
-import headerFooterHOC from '../../decorators/headerFooter.js';
-
-export class RawSlider extends Component {
+class Slider extends Component {
   static propTypes = {
     refine: PropTypes.func.isRequired,
     min: PropTypes.number.isRequired,
@@ -26,6 +19,10 @@ export class RawSlider extends Component {
       PropTypes.bool,
       PropTypes.shape({ format: PropTypes.func.isRequired }),
     ]),
+    cssClasses: PropTypes.shape({
+      root: PropTypes.string.isRequired,
+      disabledRoot: PropTypes.string.isRequired,
+    }).isRequired,
   };
 
   get isDisabled() {
@@ -46,7 +43,9 @@ export class RawSlider extends Component {
 
     const pitPoints = [
       min,
-      ...times(steps - 1, step => min + stepsLength * (step + 1)),
+      ...range({
+        end: steps - 1,
+      }).map(step => min + stepsLength * (step + 1)),
       max,
     ];
 
@@ -56,34 +55,33 @@ export class RawSlider extends Component {
   // creates an array of values where the slider should snap to
   computeSnapPoints({ min, max, step }) {
     if (!step) return undefined;
-    return [...range(min, max, step), max];
+    return [...range({ start: min, end: max, step }), max];
   }
 
   createHandleComponent = tooltips => props => {
     // display only two decimals after comma,
-    // and apply `tooltips.format()` if any`
+    // and apply `tooltips.format()` if any
     const roundedValue =
       Math.round(parseFloat(props['aria-valuenow']) * 100) / 100;
-    const value = has(tooltips, 'format')
-      ? tooltips.format(roundedValue)
-      : roundedValue;
+    const value =
+      tooltips && tooltips.format
+        ? tooltips.format(roundedValue)
+        : roundedValue;
 
-    const className = cx('ais-range-slider--handle', props.className, {
-      'ais-range-slider--handle-lower': props['data-handle-key'] === 0,
-      'ais-range-slider--handle-upper': props['data-handle-key'] === 1,
+    const className = cx(props.className, {
+      'rheostat-handle-lower': props['data-handle-key'] === 0,
+      'rheostat-handle-upper': props['data-handle-key'] === 1,
     });
 
     return (
       <div {...props} className={className}>
-        {tooltips ? (
-          <div className="ais-range-slider--tooltip">{value}</div>
-        ) : null}
+        {tooltips && <div className="rheostat-tooltip">{value}</div>}
       </div>
     );
   };
 
   render() {
-    const { tooltips, step, pips, values } = this.props;
+    const { tooltips, step, pips, values, cssClasses } = this.props;
 
     const { min, max } = this.isDisabled
       ? { min: this.props.min, max: this.props.max + 0.001 }
@@ -94,7 +92,11 @@ export class RawSlider extends Component {
       pips === false ? [] : this.computeDefaultPitPoints({ min, max });
 
     return (
-      <div className={this.isDisabled ? 'ais-range-slider--disabled' : ''}>
+      <div
+        className={cx(cssClasses.root, {
+          [cssClasses.disabledRoot]: this.isDisabled,
+        })}
+      >
         <Rheostat
           handle={this.createHandleComponent(tooltips)}
           onChange={this.handleChange}
@@ -112,4 +114,4 @@ export class RawSlider extends Component {
   }
 }
 
-export default autoHideContainerHOC(headerFooterHOC(RawSlider));
+export default Slider;

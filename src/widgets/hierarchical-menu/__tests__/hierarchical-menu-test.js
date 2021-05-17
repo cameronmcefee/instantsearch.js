@@ -1,131 +1,38 @@
+import { render } from 'preact';
+import { SearchParameters } from 'algoliasearch-helper';
 import hierarchicalMenu from '../hierarchical-menu';
+
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
 
 describe('hierarchicalMenu()', () => {
   let container;
   let attributes;
   let options;
   let widget;
-  let ReactDOM;
 
   beforeEach(() => {
     container = document.createElement('div');
     attributes = ['hello', 'world'];
     options = {};
-    ReactDOM = { render: jest.fn() };
-    hierarchicalMenu.__Rewire__('render', ReactDOM.render);
+
+    render.mockClear();
   });
 
-  describe('instantiated with wrong parameters', () => {
-    it('should fail if no attributes', () => {
-      options = { container, attributes: undefined };
-      expect(() => hierarchicalMenu(options)).toThrow(/^Usage:/);
-    });
-
-    it('should fail if attributes empty', () => {
-      options = { container, attributes: [] };
-      expect(() => hierarchicalMenu(options)).toThrow(/^Usage:/);
-    });
-
-    it('should fail if no container', () => {
+  describe('Usage', () => {
+    it('throws without container', () => {
       options = { container: undefined, attributes };
-      expect(() => hierarchicalMenu(options)).toThrow(/^Usage:/);
-    });
-  });
+      expect(() => hierarchicalMenu(options))
+        .toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
 
-  describe('getConfiguration', () => {
-    beforeEach(() => {
-      options = { container, attributes };
-    });
-
-    it('has defaults', () => {
-      expect(hierarchicalMenu(options).getConfiguration({})).toEqual({
-        hierarchicalFacets: [
-          {
-            name: 'hello',
-            rootPath: null,
-            attributes: ['hello', 'world'],
-            separator: ' > ',
-            showParentLevel: true,
-          },
-        ],
-        maxValuesPerFacet: 10,
-      });
-    });
-
-    it('understand the separator option', () => {
-      expect(
-        hierarchicalMenu({ separator: ' ? ', ...options }).getConfiguration({})
-      ).toEqual({
-        hierarchicalFacets: [
-          {
-            name: 'hello',
-            rootPath: null,
-            attributes: ['hello', 'world'],
-            separator: ' ? ',
-            showParentLevel: true,
-          },
-        ],
-        maxValuesPerFacet: 10,
-      });
-    });
-
-    it('understand the showParentLevel option', () => {
-      expect(
-        hierarchicalMenu({
-          showParentLevel: false,
-          ...options,
-        }).getConfiguration({})
-      ).toEqual({
-        hierarchicalFacets: [
-          {
-            name: 'hello',
-            rootPath: null,
-            attributes: ['hello', 'world'],
-            separator: ' > ',
-            showParentLevel: false,
-          },
-        ],
-        maxValuesPerFacet: 10,
-      });
-    });
-
-    it('understand the rootPath option', () => {
-      expect(
-        hierarchicalMenu({ rootPath: 'Beer', ...options }).getConfiguration({})
-      ).toEqual({
-        hierarchicalFacets: [
-          {
-            name: 'hello',
-            rootPath: 'Beer',
-            attributes: ['hello', 'world'],
-            separator: ' > ',
-            showParentLevel: true,
-          },
-        ],
-        maxValuesPerFacet: 10,
-      });
-    });
-
-    describe('limit option', () => {
-      it('configures maxValuesPerFacet', () =>
-        expect(
-          hierarchicalMenu({ limit: 20, ...options }).getConfiguration({})
-            .maxValuesPerFacet
-        ).toBe(20));
-
-      it('uses provided maxValuesPerFacet when higher', () =>
-        expect(
-          hierarchicalMenu({ limit: 20, ...options }).getConfiguration({
-            maxValuesPerFacet: 30,
-          }).maxValuesPerFacet
-        ).toBe(30));
-
-      it('ignores provided maxValuesPerFacet when lower', () =>
-        expect(
-          hierarchicalMenu({ limit: 10, ...options }).getConfiguration({
-            maxValuesPerFacet: 3,
-          }).maxValuesPerFacet
-        ).toBe(10));
+See documentation: https://www.algolia.com/doc/api-reference/widgets/hierarchical-menu/js/"
+`);
     });
   });
 
@@ -143,44 +50,57 @@ describe('hierarchicalMenu()', () => {
         toggleRefinement: jest.fn().mockReturnThis(),
         search: jest.fn(),
       };
-      state = {
-        toggleRefinement: jest.fn(),
-      };
+      state = new SearchParameters();
+      state.toggleRefinement = jest.fn();
       options = { container, attributes };
       createURL = () => '#';
     });
 
     it('understand provided cssClasses', () => {
       const userCssClasses = {
-        root: ['root', 'cx'],
-        header: 'header',
-        body: 'body',
-        footer: 'footer',
+        root: 'root',
+        noRefinementRoot: 'noRefinementRoot',
+        searchBox: 'searchBox',
         list: 'list',
+        childList: 'childList',
         item: 'item',
-        active: 'active',
+        selectedItem: 'selectedItem',
+        parentItem: 'parentItem',
         link: 'link',
+        label: 'label',
         count: 'count',
+        noResults: 'noResults',
+        showMore: 'showMore',
+        disabledShowMore: 'disabledShowMore',
       };
-
       widget = hierarchicalMenu({ ...options, cssClasses: userCssClasses });
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+
+      const [firstRender] = render.mock.calls;
+
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
-    it('calls ReactDOM.render', () => {
+    it('calls render', () => {
       widget = hierarchicalMenu(options);
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+
+      const [firstRender] = render.mock.calls;
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     it('asks for results.getFacetValues', () => {
       widget = hierarchicalMenu(options);
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
+
       expect(results.getFacetValues).toHaveBeenCalledTimes(1);
       expect(results.getFacetValues).toHaveBeenCalledWith('hello', {
         sortBy: ['name:asc'],
@@ -189,8 +109,10 @@ describe('hierarchicalMenu()', () => {
 
     it('has a sortBy option', () => {
       widget = hierarchicalMenu({ ...options, sortBy: ['count:asc'] });
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
+
       expect(results.getFacetValues).toHaveBeenCalledTimes(1);
       expect(results.getFacetValues).toHaveBeenCalledWith('hello', {
         sortBy: ['count:asc'],
@@ -201,14 +123,16 @@ describe('hierarchicalMenu()', () => {
       widget = hierarchicalMenu({
         ...options,
         templates: {
-          header: 'header2',
           item: 'item2',
-          footer: 'footer2',
         },
       });
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+
+      const [firstRender] = render.mock.calls;
+
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     it('has a transformItems options', () => {
@@ -221,32 +145,34 @@ describe('hierarchicalMenu()', () => {
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
 
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
+      const [firstRender] = render.mock.calls;
 
-    it('sets shouldAutoHideContainer to true when no results', () => {
-      data = {};
-      widget = hierarchicalMenu(options);
-      widget.init({ helper, createURL, instantSearchInstance: {} });
-      widget.render({ results, state });
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     it('sets facetValues to empty array when no results', () => {
       data = {};
       widget = hierarchicalMenu(options);
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+
+      const [firstRender] = render.mock.calls;
+
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     it('has a toggleRefinement method', () => {
       widget = hierarchicalMenu(options);
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      const elementToggleRefinement =
-        ReactDOM.render.mock.calls[0][0].props.toggleRefinement;
+
+      const [firstRender] = render.mock.calls;
+
+      const elementToggleRefinement = firstRender[0].props.toggleRefinement;
       elementToggleRefinement('mom');
+
       expect(helper.toggleRefinement).toHaveBeenCalledTimes(1);
       expect(helper.toggleRefinement).toHaveBeenCalledWith('hello', 'mom');
       expect(helper.search).toHaveBeenCalledTimes(1);
@@ -259,7 +185,6 @@ describe('hierarchicalMenu()', () => {
         { name: 'eight', path: 'eight' },
         { name: 'nine', path: 'nine' },
       ];
-
       const firstLevel = [
         { name: 'one', path: 'one' },
         { name: 'two', path: 'two', data: secondLevel },
@@ -267,7 +192,6 @@ describe('hierarchicalMenu()', () => {
         { name: 'four', path: 'four' },
         { name: 'five', path: 'five' },
       ];
-
       data = { data: firstLevel };
       const expectedFacetValues = [
         { label: 'one', value: 'one' },
@@ -283,21 +207,14 @@ describe('hierarchicalMenu()', () => {
         { label: 'three', value: 'three' },
       ];
       widget = hierarchicalMenu({ ...options, limit: 3 });
+
       widget.init({ helper, createURL, instantSearchInstance: {} });
       widget.render({ results, state });
-      const actualFacetValues =
-        ReactDOM.render.mock.calls[0][0].props.facetValues;
+
+      const [firstRender] = render.mock.calls;
+
+      const actualFacetValues = firstRender[0].props.facetValues;
       expect(actualFacetValues).toEqual(expectedFacetValues);
     });
-
-    afterEach(() => {
-      hierarchicalMenu.__ResetDependency__('defaultTemplates');
-    });
-  });
-
-  afterEach(() => {
-    hierarchicalMenu.__ResetDependency__('render');
-    hierarchicalMenu.__ResetDependency__('autoHideContainerHOC');
-    hierarchicalMenu.__ResetDependency__('headerFooterHOC');
   });
 });

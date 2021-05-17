@@ -1,15 +1,37 @@
+import { render } from 'preact';
 import breadcrumb from '../breadcrumb';
+
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
 
 describe('breadcrumb()', () => {
   let container;
   let attributes;
-  let ReactDOM;
 
   beforeEach(() => {
     container = document.createElement('div');
     attributes = ['hierarchicalCategories.lvl0', 'hierarchicalCategories.lvl1'];
-    ReactDOM = { render: jest.fn() };
-    breadcrumb.__Rewire__('render', ReactDOM.render);
+
+    render.mockClear();
+  });
+
+  describe('Usage', () => {
+    it('throws without `container`', () => {
+      expect(() => {
+        breadcrumb({
+          container: undefined,
+        });
+      }).toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/breadcrumb/js/"
+`);
+    });
   });
 
   describe('render', () => {
@@ -87,11 +109,9 @@ describe('breadcrumb()', () => {
         instantSearchInstance: {},
       });
 
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
+      const [firstRender] = render.mock.calls;
 
-    afterEach(() => {
-      breadcrumb.__ResetDependency__('render');
+      expect(firstRender[0].props).toMatchSnapshot();
     });
   });
 });

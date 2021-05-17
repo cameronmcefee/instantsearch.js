@@ -1,27 +1,32 @@
+import { render } from 'preact';
 import menu from '../menu';
 
-describe('menu', () => {
-  it('throws an exception when no attributeName', () => {
-    const container = document.createElement('div');
-    expect(menu.bind(null, { container })).toThrow(/^Usage/);
-  });
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
 
-  it('throws an exception when no container', () => {
-    const attributeName = '';
-    expect(menu.bind(null, { attributeName })).toThrow(/^Usage/);
+  module.render = jest.fn();
+
+  return module;
+});
+
+describe('menu', () => {
+  it('throws without container', () => {
+    expect(() => {
+      menu({ attribute: undefined });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/menu/js/"
+`);
   });
 
   describe('render', () => {
-    let ReactDOM;
     let data;
     let results;
     let state;
     let helper;
 
     beforeEach(() => {
-      ReactDOM = { render: jest.fn() };
-      menu.__Rewire__('render', ReactDOM.render);
-
       data = { data: [{ name: 'foo' }, { name: 'bar' }] };
       results = { getFacetValues: jest.fn(() => data) };
       state = { toggleRefinement: jest.fn() };
@@ -30,12 +35,14 @@ describe('menu', () => {
         search: jest.fn(),
         state,
       };
+
+      render.mockClear();
     });
 
     it('snapshot', () => {
       const widget = menu({
         container: document.createElement('div'),
-        attributeName: 'test',
+        attribute: 'test',
       });
 
       widget.init({
@@ -45,13 +52,15 @@ describe('menu', () => {
       });
       widget.render({ results, state });
 
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+      const [firstRender] = render.mock.calls;
+
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     it('renders transformed items', () => {
       const widget = menu({
         container: document.createElement('div'),
-        attributeName: 'test',
+        attribute: 'test',
         transformItems: items =>
           items.map(item => ({ ...item, transformed: true })),
       });
@@ -63,11 +72,9 @@ describe('menu', () => {
       });
       widget.render({ results, state });
 
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
+      const [firstRender] = render.mock.calls;
 
-    afterEach(() => {
-      menu.__ResetDependency__('render');
+      expect(firstRender[0].props).toMatchSnapshot();
     });
   });
 });

@@ -1,58 +1,283 @@
-import jsHelper from 'algoliasearch-helper';
-const SearchResults = jsHelper.SearchResults;
-
-import connectBreadcrumb from '../connectBreadcrumb.js';
+import jsHelper, {
+  SearchResults,
+  SearchParameters,
+} from 'algoliasearch-helper';
+import { warning } from '../../../lib/utils';
+import connectBreadcrumb from '../connectBreadcrumb';
 
 describe('connectBreadcrumb', () => {
-  it('It should compute getConfiguration() correctly', () => {
-    const rendering = jest.fn();
-    const makeWidget = connectBreadcrumb(rendering);
+  describe('Usage', () => {
+    it('throws without render function', () => {
+      expect(() => {
+        connectBreadcrumb()({});
+      }).toThrowErrorMatchingInlineSnapshot(`
+"The render function is not valid (received type Undefined).
 
-    const widget = makeWidget({ attributes: ['category', 'sub_category'] });
+See documentation: https://www.algolia.com/doc/api-reference/widgets/breadcrumb/js/#connector"
+`);
+    });
 
-    // when there is no hierarchicalFacets into current configuration
-    {
-      const config = widget.getConfiguration({});
-      expect(config).toEqual({
+    it('throws with undefined `attributes`', () => {
+      expect(() => {
+        connectBreadcrumb(() => {})({
+          attributes: undefined,
+        });
+      }).toThrowErrorMatchingInlineSnapshot(`
+"The \`attributes\` option expects an array of strings.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/breadcrumb/js/#connector"
+`);
+    });
+
+    it('throws with empty `attributes`', () => {
+      expect(() => {
+        connectBreadcrumb(() => {})({
+          attributes: [],
+        });
+      }).toThrowErrorMatchingInlineSnapshot(`
+"The \`attributes\` option expects an array of strings.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/breadcrumb/js/#connector"
+`);
+    });
+  });
+
+  it('is a widget', () => {
+    const render = jest.fn();
+    const unmount = jest.fn();
+
+    const customBreadcrumb = connectBreadcrumb(render, unmount);
+    const widget = customBreadcrumb({ attributes: ['category'] });
+
+    expect(widget).toEqual(
+      expect.objectContaining({
+        $$type: 'ais.breadcrumb',
+        init: expect.any(Function),
+        render: expect.any(Function),
+        dispose: expect.any(Function),
+      })
+    );
+  });
+
+  describe('getWidgetSearchParameters', () => {
+    beforeEach(() => {
+      warning.cache = {};
+    });
+
+    it('returns the `SearchParameters` with default value', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '');
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+      });
+
+      const actual = widget.getWidgetSearchParameters(helper.state, {
+        uiState: {},
+      });
+
+      expect(actual.hierarchicalFacets).toEqual([
+        {
+          name: 'category',
+          attributes: ['category', 'sub_category'],
+          rootPath: null,
+          separator: ' > ',
+        },
+      ]);
+    });
+
+    it('returns the `SearchParameters` with default a custom `separator`', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '');
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+        separator: ' / ',
+      });
+
+      const actual = widget.getWidgetSearchParameters(helper.state, {
+        uiState: {},
+      });
+
+      expect(actual.hierarchicalFacets).toEqual([
+        {
+          name: 'category',
+          attributes: ['category', 'sub_category'],
+          rootPath: null,
+          separator: ' / ',
+        },
+      ]);
+    });
+
+    it('returns the `SearchParameters` with default a custom `rootPath`', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '');
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+        rootPath: 'TopLevel > SubLevel',
+      });
+
+      const actual = widget.getWidgetSearchParameters(helper.state, {
+        uiState: {},
+      });
+
+      expect(actual.hierarchicalFacets).toEqual([
+        {
+          name: 'category',
+          attributes: ['category', 'sub_category'],
+          rootPath: 'TopLevel > SubLevel',
+          separator: ' > ',
+        },
+      ]);
+    });
+
+    it('returns the `SearchParameters` with another `hierarchicalFacets` already defined', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '', {
         hierarchicalFacets: [
           {
-            attributes: ['category', 'sub_category'],
-            name: 'category',
-            rootPath: null,
+            name: 'country',
+            attributes: ['country', 'sub_country'],
             separator: ' > ',
+            rootPath: null,
           },
         ],
       });
-    }
 
-    // when there is an identical hierarchicalFacets into current configuration
-    {
-      const spy = jest.spyOn(global.console, 'warn');
-      const config = widget.getConfiguration({
-        hierarchicalFacets: [{ name: 'category' }],
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
       });
-      expect(config).toEqual({});
-      expect(spy).toHaveBeenCalled();
-      spy.mockReset();
-      spy.mockRestore();
-    }
 
-    // when there is already a different hierarchicalFacets into current configuration
-    {
-      const config = widget.getConfiguration({
-        hierarchicalFacets: [{ name: 'foo' }],
+      const actual = widget.getWidgetSearchParameters(helper.state, {
+        uiState: {},
       });
-      expect(config).toEqual({
+
+      expect(actual.hierarchicalFacets).toEqual([
+        {
+          name: 'country',
+          attributes: ['country', 'sub_country'],
+          separator: ' > ',
+          rootPath: null,
+        },
+        {
+          name: 'category',
+          attributes: ['category', 'sub_category'],
+          separator: ' > ',
+          rootPath: null,
+        },
+      ]);
+    });
+
+    it('returns the `SearchParameters` with the same `hierarchicalFacets` already defined', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '', {
         hierarchicalFacets: [
           {
-            attributes: ['category', 'sub_category'],
             name: 'category',
-            rootPath: null,
+            attributes: ['category', 'sub_category'],
             separator: ' > ',
+            rootPath: null,
           },
         ],
       });
-    }
+
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+      });
+
+      const actual = widget.getWidgetSearchParameters(helper.state, {
+        uiState: {},
+      });
+
+      expect(actual.hierarchicalFacets).toEqual([
+        {
+          name: 'category',
+          attributes: ['category', 'sub_category'],
+          separator: ' > ',
+          rootPath: null,
+        },
+      ]);
+    });
+
+    it('warns with the same `hierarchicalFacets` already defined with different `attributes`', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '', {
+        hierarchicalFacets: [
+          {
+            name: 'category',
+            attributes: ['category', 'sub_category', 'sub_sub_category'],
+            separator: ' > ',
+            rootPath: null,
+          },
+        ],
+      });
+
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+      });
+
+      expect(() =>
+        widget.getWidgetSearchParameters(helper.state, {
+          uiState: {},
+        })
+      ).toWarnDev();
+    });
+
+    it('warns with the same `hierarchicalFacets` already defined with different `separator`', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '', {
+        hierarchicalFacets: [
+          {
+            name: 'category',
+            attributes: ['category', 'sub_category'],
+            separator: ' > ',
+            rootPath: null,
+          },
+        ],
+      });
+
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+        separator: ' / ',
+      });
+
+      expect(() =>
+        widget.getWidgetSearchParameters(helper.state, {
+          uiState: {},
+        })
+      ).toWarnDev();
+    });
+
+    it('warns with the same `hierarchicalFacets` already defined with different `rootPath`', () => {
+      const render = () => {};
+      const makeWidget = connectBreadcrumb(render);
+      const helper = jsHelper({}, '', {
+        hierarchicalFacets: [
+          {
+            name: 'category',
+            attributes: ['category', 'sub_category'],
+            separator: ' > ',
+            rootPath: 'TopLevel > SubLevel',
+          },
+        ],
+      });
+
+      const widget = makeWidget({
+        attributes: ['category', 'sub_category'],
+        rootPath: 'TopLevel',
+      });
+
+      expect(() =>
+        widget.getWidgetSearchParameters(helper.state, {
+          uiState: {},
+        })
+      ).toWarnDev();
+    });
   });
 
   it('Renders during init and render', () => {
@@ -60,17 +285,21 @@ describe('connectBreadcrumb', () => {
     const makeWidget = connectBreadcrumb(rendering);
     const widget = makeWidget({ attributes: ['category', 'sub_category'] });
 
-    const config = widget.getConfiguration({});
-    expect(config).toEqual({
-      hierarchicalFacets: [
-        {
-          attributes: ['category', 'sub_category'],
-          name: 'category',
-          rootPath: null,
-          separator: ' > ',
-        },
-      ],
+    const config = widget.getWidgetSearchParameters(new SearchParameters({}), {
+      uiState: {},
     });
+    expect(config).toEqual(
+      new SearchParameters({
+        hierarchicalFacets: [
+          {
+            attributes: ['category', 'sub_category'],
+            name: 'category',
+            rootPath: null,
+            separator: ' > ',
+          },
+        ],
+      })
+    );
 
     // Verify that the widget has not been rendered yet at this point
     expect(rendering.mock.calls).toHaveLength(0);
@@ -129,31 +358,12 @@ describe('connectBreadcrumb', () => {
     expect(rendering.mock.calls[1][1]).toBe(false);
   });
 
-  it('Does not duplicate configuration', () => {
-    const makeWidget = connectBreadcrumb(() => {});
-    const widget = makeWidget({ attributes: ['category', 'sub_category'] });
-
-    const partialConfiguration = widget.getConfiguration({
-      hierarchicalFacets: [
-        {
-          attributes: ['category', 'sub_category'],
-          name: 'category',
-          rootPath: null,
-          separator: ' > ',
-          showParentLevel: true,
-        },
-      ],
-    });
-
-    expect(partialConfiguration).toEqual({});
-  });
-
   it('provides the correct facet values', () => {
     const rendering = jest.fn();
     const makeWidget = connectBreadcrumb(rendering);
     const widget = makeWidget({ attributes: ['category', 'sub_category'] });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters());
     const helper = jsHelper({}, '', config);
     helper.search = jest.fn();
 
@@ -198,7 +408,7 @@ describe('connectBreadcrumb', () => {
 
     const secondRenderingOptions = rendering.mock.calls[1][0];
     expect(secondRenderingOptions.items).toEqual([
-      { name: 'Decoration', value: null },
+      { label: 'Decoration', value: null },
     ]);
   });
 
@@ -209,7 +419,9 @@ describe('connectBreadcrumb', () => {
       attributes: ['category', 'sub_category'],
     });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters({}), {
+      uiState: {},
+    });
     const helper = jsHelper({}, '', config);
 
     helper.search = jest.fn();
@@ -251,10 +463,10 @@ describe('connectBreadcrumb', () => {
     const widget = makeWidget({
       attributes: ['category', 'sub_category'],
       transformItems: items =>
-        items.map(item => ({ ...item, name: 'transformed' })),
+        items.map(item => ({ ...item, label: 'transformed' })),
     });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters());
     const helper = jsHelper({}, '', config);
     helper.search = jest.fn();
 
@@ -299,7 +511,7 @@ describe('connectBreadcrumb', () => {
 
     const secondRenderingOptions = rendering.mock.calls[1][0];
     expect(secondRenderingOptions.items).toEqual([
-      expect.objectContaining({ name: 'transformed' }),
+      expect.objectContaining({ label: 'transformed' }),
     ]);
   });
 
@@ -308,7 +520,7 @@ describe('connectBreadcrumb', () => {
     const makeWidget = connectBreadcrumb(rendering);
     const widget = makeWidget({ attributes: ['category', 'sub_category'] });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters());
     const helper = jsHelper({}, '', config);
     helper.search = jest.fn();
 
@@ -367,7 +579,7 @@ describe('connectBreadcrumb', () => {
       ],
     });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters());
     const helper = jsHelper({}, '', config);
     helper.search = jest.fn();
 
@@ -527,7 +739,7 @@ describe('connectBreadcrumb', () => {
     const makeWidget = connectBreadcrumb(rendering);
     const widget = makeWidget({ attributes: ['category', 'sub_category'] });
 
-    const config = widget.getConfiguration({});
+    const config = widget.getWidgetSearchParameters(new SearchParameters());
     const helper = jsHelper({}, '', config);
     helper.search = jest.fn();
 
@@ -577,47 +789,40 @@ describe('connectBreadcrumb', () => {
     expect(helper.getHierarchicalFacetBreadcrumb('category')).toEqual([]);
   });
 
-  it('Provides a configuration if none exists', () => {
-    const makeWidget = connectBreadcrumb(() => {});
-    const widget = makeWidget({ attributes: ['category', 'sub_category'] });
+  describe('dispose', () => {
+    it('does not throw without the unmount function', () => {
+      const helper = jsHelper({}, '');
 
-    const partialConfiguration = widget.getConfiguration({});
+      const renderFn = () => {};
+      const makeWidget = connectBreadcrumb(renderFn);
+      const widget = makeWidget({ attributes: ['category'] });
 
-    expect(partialConfiguration).toEqual({
-      hierarchicalFacets: [
-        {
-          attributes: ['category', 'sub_category'],
-          name: 'category',
-          rootPath: null,
-          separator: ' > ',
-        },
-      ],
-    });
-  });
-
-  it('Provides an additional configuration if the existing one is different', () => {
-    const makeWidget = connectBreadcrumb(() => {});
-    const widget = makeWidget({ attributes: ['category', 'sub_category'] });
-
-    const partialConfiguration = widget.getConfiguration({
-      hierarchicalFacets: [
-        {
-          attributes: ['otherCategory', 'otherSub_category'],
-          name: 'otherCategory',
-          separator: ' > ',
-        },
-      ],
+      expect(() =>
+        widget.dispose({ helper, state: helper.state })
+      ).not.toThrow();
     });
 
-    expect(partialConfiguration).toEqual({
-      hierarchicalFacets: [
-        {
-          attributes: ['category', 'sub_category'],
-          name: 'category',
-          rootPath: null,
-          separator: ' > ',
+    it('does not remove refinement', () => {
+      const renderFn = () => {};
+      const makeWidget = connectBreadcrumb(renderFn);
+      const widget = makeWidget({ attributes: ['category'] });
+
+      const helper = jsHelper({}, '', {
+        hierarchicalFacetsRefinements: {
+          category: ['boxes'],
         },
-      ],
+      });
+      helper.search = jest.fn();
+
+      widget.init({
+        helper,
+        state: helper.state,
+        createURL: () => '#',
+      });
+
+      const newState = widget.dispose({ helper, state: helper.state });
+
+      expect(newState).toBeUndefined();
     });
   });
 });

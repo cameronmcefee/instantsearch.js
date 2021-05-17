@@ -1,23 +1,13 @@
-import { checkRendering } from '../../lib/utils.js';
+import {
+  checkRendering,
+  createDocumentationMessageGenerator,
+  noop,
+} from '../../lib/utils';
 
-const usage = `Usage:
-var customSearchBox = connectSearchBox(function render(params, isFirstRendering) {
-  // params = {
-  //   query,
-  //   onHistoryChange,
-  //   refine,
-  //   instantSearchInstance,
-  //   widgetParams,
-  //   clear,
-  // }
+const withUsage = createDocumentationMessageGenerator({
+  name: 'search-box',
+  connector: true,
 });
-search.addWidget(
-  customSearchBox({
-    [ queryHook ],
-  })
-);
-Full documentation available at https://community.algolia.com/instantsearch.js/v2/connectors/connectSearchBox.html
-`;
 
 /**
  * @typedef {Object} CustomSearchBoxWidgetOptions
@@ -31,7 +21,6 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
 /**
  * @typedef {Object} SearchBoxRenderingOptions
  * @property {string} query The query from the last search.
- * @property {function(SearchParameters)} onHistoryChange Registers a callback when the browser history changes.
  * @property {function(string)} refine Sets a new query and searches.
  * @property {function()} clear Remove the query and perform search.
  * @property {Object} widgetParams All original `CustomSearchBoxWidgetOptions` forwarded to the `renderFn`.
@@ -69,14 +58,14 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
  * var customSearchBox = instantsearch.connectors.connectSearchBox(renderFn);
  *
  * // mount widget on the page
- * search.addWidget(
+ * search.addWidgets([
  *   customSearchBox({
  *     containerNode: $('#custom-searchbox'),
  *   })
- * );
+ * ]);
  */
-export default function connectSearchBox(renderFn, unmountFn) {
-  checkRendering(renderFn, usage);
+export default function connectSearchBox(renderFn, unmountFn = noop) {
+  checkRendering(renderFn, withUsage());
 
   return (widgetParams = {}) => {
     const { queryHook } = widgetParams;
@@ -89,38 +78,36 @@ export default function connectSearchBox(renderFn, unmountFn) {
     }
 
     return {
+      $$type: 'ais.searchBox',
+
       _clear() {},
+
       _cachedClear() {
         this._clear();
       },
 
-      init({ helper, onHistoryChange, instantSearchInstance }) {
+      init({ helper, instantSearchInstance }) {
         this._cachedClear = this._cachedClear.bind(this);
         this._clear = clear(helper);
 
-        this._refine = (() => {
-          let previousQuery;
+        const setQueryAndSearch = query => {
+          if (query !== helper.state.query) {
+            helper.setQuery(query).search();
+          }
+        };
 
-          const setQueryAndSearch = (q, doSearch = true) => {
-            if (q !== helper.state.query) {
-              previousQuery = helper.state.query;
-              helper.setQuery(q);
-            }
-            if (doSearch && previousQuery !== undefined && previousQuery !== q)
-              helper.search();
-          };
+        this._refine = query => {
+          if (queryHook) {
+            queryHook(query, setQueryAndSearch);
+            return;
+          }
 
-          return queryHook
-            ? q => queryHook(q, setQueryAndSearch)
-            : setQueryAndSearch;
-        })();
-
-        this._onHistoryChange = onHistoryChange;
+          setQueryAndSearch(query);
+        };
 
         renderFn(
           {
-            query: helper.state.query,
-            onHistoryChange: this._onHistoryChange,
+            query: helper.state.query || '',
             refine: this._refine,
             clear: this._cachedClear,
             widgetParams,
@@ -135,8 +122,7 @@ export default function connectSearchBox(renderFn, unmountFn) {
 
         renderFn(
           {
-            query: helper.state.query,
-            onHistoryChange: this._onHistoryChange,
+            query: helper.state.query || '',
             refine: this._refine,
             clear: this._cachedClear,
             widgetParams,
@@ -149,11 +135,12 @@ export default function connectSearchBox(renderFn, unmountFn) {
 
       dispose({ state }) {
         unmountFn();
-        return state.setQuery('');
+
+        return state.setQueryParameter('query', undefined);
       },
 
       getWidgetState(uiState, { searchParameters }) {
-        const query = searchParameters.query;
+        const query = searchParameters.query || '';
 
         if (query === '' || (uiState && uiState.query === query)) {
           return uiState;
@@ -166,7 +153,7 @@ export default function connectSearchBox(renderFn, unmountFn) {
       },
 
       getWidgetSearchParameters(searchParameters, { uiState }) {
-        return searchParameters.setQuery(uiState.query || '');
+        return searchParameters.setQueryParameter('query', uiState.query || '');
       },
     };
   };

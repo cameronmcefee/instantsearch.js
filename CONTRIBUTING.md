@@ -1,171 +1,137 @@
 <p align="center">
   <a href="https://community.algolia.com/instantsearch.js">
-    <img alt="InstantSearch.js" src="./docgen/assets/img/instantsearch-medal.svg" width="250">
+    <img alt="InstantSearch.js" src="https://community.algolia.com/instantsearch.js/v2/assets/img/instantsearch-medal.svg" width="250">
   </a>
 </p>
 
-Hello and welcome to the contributing guide guide for InstantSearch.js. Thanks for considering
-participating in our project 🙇
+Hello and welcome to the contributing guide for InstantSearch.js. Thanks for considering participating in our project 🙇
 
-If this guide does not contain what you are looking for and thus prevents you from contributing,
-don't hesitate to leave a message on the [community forum](https://discourse.algolia.com/) or
-[open an issue](https://github.com/algolia/instantsearch.js/issues).
+If this guide does not contain what you are looking for and thus prevents you from contributing, don't hesitate to leave a message on the [community forum](https://discourse.algolia.com/) or to [open an issue](https://github.com/algolia/instantsearch.js/issues).
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
-- [Contributing with an new issue ⚠️](#contributing-with-an-new-issue-)
-- [The code contribution process 🤘](#the-code-contribution-process-)
-- [Commit conventions 🤓](#commit-conventions-)
-- [Branches organization 🌳](#branches-organization-)
+- [Reporting an issue](#reporting-an-issue)
+- [The code contribution process](#the-code-contribution-process)
+- [Commit conventions](#commit-conventions)
+- [Branch organization](#branch-organization)
 - [Requirements](#requirements)
-- [Launch the dev environment 👩‍💻](#launch-the-dev-environment-%E2%80%8D)
-- [Updating the examples](#updating-the-examples)
-- [Folders of the project 🗺](#folders-of-the-project-%F0%9F%97%BA)
+- [Launch the dev environment](#launch-the-dev-environment)
+- [Folders of the project](#folders-of-the-project)
   - [The source folder](#the-source-folder)
-  - [The documentation source](#the-documentation-source)
-  - [The dev app](#the-dev-app)
-- [Tests 🔬](#tests-)
+- [Tests](#tests)
   - [Unit tests](#unit-tests)
-  - [Functional tests](#functional-tests)
-- [Linting ✨](#linting-)
-- [Release 🛳](#release-%F0%9F%9B%B3)
+- [Linting](#linting)
+- [Release](#release)
   - [Main version](#main-version)
   - [Maintenance version](#maintenance-version)
-- [Updating the docs 📚](#updating-the-docs-)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-## Contributing with an new issue ⚠️
+## Reporting an issue
 
-Opening an issue is very useful for us so don't hesitate, we'll make sure to fix it
-as soon as possible if it's technically feasible and doesn't have important side effects
-for the other users.
+Opening an issue is very effective way to contribute because many users might also be impacted. We'll make sure to fix it quickly if it's technically feasible and doesn't have important side effects for other users.
 
-Before opening an issue, first check that there is not an already open issue for the same
-topic using the [issues tab](https://github.com/algolia/instantsearch.js/issues). Don't
-hesitate to thumb up an issue that corresponds to the problem you found.
+Before reporting an issue, first check that there is not an already open issue for the same topic using the [issues page](https://github.com/algolia/instantsearch.js/issues). Don't hesitate to thumb up an issue that corresponds to the problem you have.
 
-Another element that will help us go faster at solving the issue is to provide a reproducible
-test case. We often recommend to [use this CodeSandbox template](https://codesandbox.io/s/github/algolia/instantsearch-templates/tree/master/src/InstantSearch.js).
+Another element that will help us go faster at solving the issue is to provide a reproducible test case. We often recommend to [use this CodeSandbox template](https://codesandbox.io/s/github/algolia/instantsearch-templates/tree/master/src/InstantSearch.js).
 
-## The code contribution process 🤘
+## The code contribution process
 
-On your side:
- - Fork and clone the project
- - Create a new branch for what you want to solve (fix/*issue number*, feat/2.x-*name of the feature*)
- - Make your changes
- - Open a pull request
+InstantSearch.js was first developed in JavaScript and is now being migrated to TypeScript.
 
-Depending on what you're working, you might consider different base branches.
+For any code contribution, you need to:
+
+- Fork and clone the project
+- Create a new branch for what you want to solve (fix/_issue-number_, feat/_name-of-the-feature_)
+- Make your changes
+- Open a pull request
+
+Depending on what you're working on, you might consider different [base branches](#branch-organization).
 
 Then:
- - Peer review of the pull request (by at least one of the core contributors)
- - Automatic checks ([tests](#tests-), [commits](#commit-conventions-), [linters](#lint-))
- - When everything is green, your contribution is merged 🚀
+
+- Peer review of the pull request (by at least one of the core contributors)
+- Automatic checks ([tests](#tests), [commits](#commit-conventions), [linters](#linting))
+- When everything is green, your contribution is merged 🚀
 
 After you create a pull request, a bot will comment with a link to a development version of the website.
 
-On it you can find:
-1. The generated documentation: https://**deploy-url-netlify**/
-    - for example: https://deploy-preview-2383--algolia-instantsearch.netlify.com/
-    - source: https://github.com/algolia/instantsearch.js/tree/develop/docgen
-2. A playground for the widgets: https://**deploy-url-netlify**/v2/dev-novel
-    - for example: https://deploy-preview-3102--algolia-instantsearch.netlify.com/v2/dev-novel
-    - source: https://github.com/algolia/instantsearch.js/tree/develop/dev
+You will find a playground for the widgets: https://**netlify-deploy-url**/stories.
 
-## Commit conventions 🤓
+- Example: https://deploy-preview-3376--instantsearchjs.netlify.com/stories/
+- Source: https://github.com/algolia/instantsearch.js/tree/develop/stories
 
-This project follows the [conventional changelog](https://conventionalcommits.org/) approach.
-This means that all commit messages should be formatted using the following scheme:
+## Commit conventions
+
+This project follows the [conventional changelog](https://conventionalcommits.org/) approach. This means that all commit messages should be formatted using the following scheme:
 
 ```
 type(scope): description
 ```
 
 In most cases, we use the following types:
- - `fix`: for anything that contains the resolution of an issue (identified or not)
- - `feat`: for anything that contains a new feature
- - `chore`: for anything that is not related to the library itself (doc, tooling)
 
-Even though the scope is optional, we try to fill it in as it helps us better understand the
-impact of a change. We either use the name of the widget / connector / component impacted or we
-use the kind of part of the project it will impact, for example: `docs`, `tooling`, `ci`
+- `fix`: for any resolution of an issue (identified or not)
+- `feat`: for any new feature
+- `refactor`: for any code change that neither adds a feature nor fixes an issue
+- `docs`: for any documentation change or addition
+- `chore`: for anything that is not related to the library itself (doc, tooling)
 
-Finally if your work is based on an issue on GitHub, please add in the body of the commit message
-`fix #1234` if it solves the issue #1234.
+Even though the scope is optional, we try to fill it in as it helps us better understand the impact of a change. We either use the name of the widget/connector/component impacted or we use impact topic (e.g. `docs`, `tooling`, `deps`, `ci`).
 
-Some examples of valid commit messages (first line):
- - fix(searchbox): make magnifying glass bigger
- - chore(deps): update dependency style-loader to v0.19.0
- - fix(connectRefinementList): set default value for limit
- - chore: reword contributions guides
+Finally, if your work is based on an issue on GitHub, please add in the body of the commit message "fix #1234" if it solves the issue #1234 (read "[Closing issues using keywords](https://help.github.com/en/articles/closing-issues-using-keywords)").
 
-## Branches organization 🌳
+Some examples of valid commit messages (used as first lines):
 
-The project is based on the classic GitHub flow because we are building a library and
-each version must be crafted with care. We also maintain a branch specific for the older
-version of the library (currently v1). Finally, when building feature (that will go in the
-next minor version) we have specific branch.
+> - fix(searchbox): increase magnifying glass size
+> - chore(deps): update dependency rollup-plugin-babel to v3.0.7
+> - fix(connectRefinementList): set default value for limit
+> - chore: reword contributions guides
 
-To sum up, we have:
- - `develop` for the version -- Pull requests for bugs should be created against this branch
- - `feat/2.*` for the next minor version -- Pull requests for features should be created against this branch
- - `master` for the current stable version -- we usually don't make pull requests for this branch
- - `maintenance` for the previous major version (currently v1) -- Pull requests for critical bug fixes on the old version
+## Branch organization
 
-You should do the dev and create pull requests according to the target version.
+The project is based on the classic GitHub flow:
 
-NB: No new features will be done on the maintenance version.
+- `develop` for the current version being worked on – Pull requests for bugs and feature related to the current major version should be created against this branch
+- `master` for the latest stable version – we usually don't make pull requests on this branch
+- `vX` for each major version (`X` being a number) – Pull requests for critical bug fixes should be created against this branch
+
+Most of the time, your pull requests should target the `develop` branch, except if you're fixing a critical bug on an older version.
+
+_Note that no new features will be developed or backported for the `vX` branches._
 
 ## Requirements
 
 To run this project, you will need:
 
- - Node.js >= 8 (current stable version) -- using nvm makes the life easier - [install instructions](https://github.com/creationix/nvm#install-script)
- - Yarn https://yarnpkg.com/en/
+- Node.js ≥ 8 (current stable version) – [nvm](https://github.com/creationix/nvm#install-script) is recommended
+- [Yarn](https://yarnpkg.com)
 
-## Launch the dev environment 👩‍💻
+## Launch the dev environment
 
-During the development, we use two main tools. The dev app / playground in which we create stories
-for the different widgets and the documentation website which has create API documentation based
-on the JSDoc comments.
+We use [Storybook](https://github.com/storybooks/storybook) to create stories for widgets.
 
 ```sh
 yarn
 yarn dev
 ```
 
-Go to <http://localhost:8080> for the example playground.
+Go to <http://localhost:6006> for the widget playground.
 
-Go to <http://localhost:3000> for the documentation website.
-
-## Updating the examples
-
-To update the documentation examples, you must re-build the InstantSearch.js library each time
-you change it via:
-
-```sh
-yarn build
-```
-
-And also relaunch the dev environement afterwards.
-
-## Folders of the project 🗺
+## Folders of the project
 
 Here are the main files and folders of the project.
 
 ```
-▸ dev/                << the dev app source
-▸ docgen/             << the documentation source
-▸ functional-tests/   << the functional tests
+▸ .storybook/         << the storybook configuration source
 ▸ scripts/            << the scripts for maintaining the project
 ▸ src/                << the source of the library
+▸ stories/            << the widget stories
+▸ website/            << the website source
   CHANGELOG.md        << the autogenerated changelog (based on commits)
   CONTRIBUTING.md     << this file
-  index.es6.js        << the root js file for the ES6 module
-  index.js            << the root js file for the bundle
   package.json        << the definition of the project
   README.md           << the introduction of the project
 ```
@@ -174,172 +140,69 @@ Here are the main files and folders of the project.
 
 ```
 ▸ src/
-  ▸ components/       << The pReact components for the UI of our widgets (UI)
-  ▸ connectors/       << The source of all the connectors (UX without UI)
-  ▸ css/              << The source of the themes (reset / algolia theme)
-  ▸ decorators/       << Preact HoC that factorize some behaviour of the widgets
-  ▸ lib/              << The core of the library, instantsearch, url
-  ▸ widgets/          << The source of the widgets (UX + UI)
+  ▸ components/       << The Preact components for the UI of our widgets
+  ▸ connectors/       << The source of all the connectors driving the widgets' logic
+  ▸ helpers/          << The source of the method helpers
+  ▸ lib/              << The core of the library (InstantSearch, routers, etc.)
+  ▸ types/            << The TypeScript declarations
+  ▸ widgets/          << The source of the widgets
 ```
 
-### The documentation source
-
-```
-▾ docgen/
-  ▸ assets/                         << static assets
-  ▸ layouts/                        << pug files that define the structure of the pages
-  ▸ plugins/                        << custom metalsmith plugins
-  ▸ src/                            << Source for the editorial content
-    build.js                        << build script (prod)
-    builder.js                      << main js file of the doc builder
-    config.js                       << variables definition for the build
-    devServer.js                    << config for the dev server
-    mdRenderer.js                   << customized md renderer
-    middlewares.js                  << metalsmith plugins definitions
-    package.json
-    path.js                         << path config file
-    postcss.config.js               << postcss config file
-    start.js                        << build script (dev)
-    syntaxHighlighting.js           << customized syntax highlighting
-    webpack.config.babel.js         << common webpack config
-    webpack.config.build.babel.js   << prod webpack config
-    webpack.config.start.babel.js   << dev webpack config
-```
-
-### The dev app
-
-```
-▾ dev/
-  ▾ app/                      << the source of the dev app
-    ▸ custom-widgets/         << the source of the custom widgets to validate the connector API
-    ▸ templates/              << templates used for the common widgets
-      index.js                << main script of the dev app
-      init-builtin-widgets.js << initialization of the IS.js app with built-in widgets
-      init-jquery-widgets.js  << initialization of the IS.js app with custom widget / jQuery
-      init-vanilla-widgets.js << initialization of the IS.js app with other custom widgets
-      wrap-with-hits.js       << utility source that adds a hits and searchbox for each story
-    style.css
-    template.html
-    webpack.config.js
-```
-
-## Tests 🔬
+## Tests
 
 ### Unit tests
+
 Our unit tests are written with [Jest](https://facebook.github.io/jest/):
 
 To run all the tests once:
+
 ```sh
 yarn test
 ```
 
 To run the test continuously based on what you changed (useful when developing or debugging):
-```sh
-yarn test:watch # unit tests watch mode, no lint
-```
-
-### Functional tests
-
-We have one functional test ensuring that when we instantiate a full app with
-a `searchBox`, we are able to use it and get different hits than initially.
-
-Functional tests are built with [webdriver.io](http://webdriver.io/), a wrapper
-around [WebDriver API](https://www.w3.org/TR/2013/WD-webdriver-20130117/) (Selenium).
-On travis they will run on different browsers using [Sauce Labs](https://saucelabs.com/).
-
-#### Local setup
-
-Locally it will use a docker image bundling Selenium and browsers.
 
 ```sh
-docker pull elgalu/selenium
-# this helps in loading the host website from the container,
-# comes from https://docs.docker.com/docker-for-mac/networking/#known-limitations-use-cases-and-workarounds
-docker run -d --name=grid -p 4444:24444 -p 6080:26080 -p 5900:25900 \
-    -e TZ="US/Pacific" -e NOVNC=true -v /dev/shm:/dev/shm --privileged elgalu/selenium
+yarn test --watch
 ```
 
-#### Running locally
+## Linting
 
-```sh
-# We want to access the host machine from the container (to reach the test app web server).
-# Needed once per session, this is not persistent:
-sudo ifconfig lo0 alias 10.200.10.1/24
-npm run test:functional
-# npm run test:functional:dev will reload tests when file changes
-# npm run test:functional:dev:debug will load the test website locally for you to open it
-# if something goes wrong: docker restart grid && killall node
-```
+Linters are static checkers for code. They help us maintain a consistent code base. They are used for JavaScript and TypeScript files.
 
-Locally you can inspect (view) the browser doing the test here: http://localhost:6080/.
-
-#### Debugging
-
-In order to check the status of the functional tests on all the platforms we use
-sauce labs. The first here is to [get the credentials](https://saucelabs.com/beta/user-settings) of your sauce labs account.
-
-Running the functional tests on sauce labs:
-
-```sh
-SAUCE_USERNAME=[your login] SAUCE_ACCESS_KEY=[your api key] CI=true yarn run test:functional
-```
-
-You can then inspect the status of tests from your dashboard. Check the browsers for which tests are
-failing. If some are IE or Edge you can download a virtual machine image from the
-[Microsoft website](https://developer.microsoft.com/en-us/microsoft-edge/tools/vms/).
-
-Update the config of the dev server (instantsearch.js/scripts/dev.sh) so that you can access
-the test page with your VM. **Do not commit this change**
-
-```diff
-- webpack-dev-server --config dev/webpack.dev.config.babel.js --hot --inline --no-info &
-+ webpack-dev-server --config dev/webpack.dev.config.babel.js --hot --inline --no-info --public [your_ip] &
-```
-
-Then you should be able debug using the dev setup: `yarn run dev` and the virtual machine. You can also
-run the page used for function tests using `yarn run test:functional:dev:debug-server`
-
-## Linting ✨
-
-Linters are static checkers for the code. They help us maintain a consistent code base. They are used
-for js and SCSS files.
-
-If your editor support them, then you will see the errors directly there. You can also run them using
-your command line:
+If your editor support them, then you will see the errors directly there. You can also run them using your command line:
 
 ```sh
 yarn lint
 ```
 
-The JS files are validated using a combination of prettier (strict syntax form) and eslint rules (for
-common mistakes and patterns). The scss linter uses sass-lint.
+JavaScript and TypeScript files are validated using a combination of [Prettier](https://github.com/prettier/prettier) (strict syntax form) and [ESLint](https://github.com/eslint/eslint) rules (for common mistakes and patterns).
 
-## Release 🛳
+## Release
 
 ### Main version
+
 For the main version, go on develop (`git checkout develop`) and use:
 
 ```sh
 npm run release
 ```
 
-**Be sure to use `$ npm run` instead of `$ yarn run` to avoid issues**
+_Make sure to use `npm run` instead of `yarn run` to avoid issues._
 
 ### Maintenance version
 
 For the maintenance version, go on maintenance (`git checkout maintenance`) and use:
 
 ```sh
-npm run release-maintenance
+npm run release:maintenance
 ```
 
-**Be sure to use `$ npm run` instead of `$ yarn run` to avoid issues**
+_Make sure to use `npm run` instead of `yarn run` to avoid issues._
 
-#### Beta version β
+#### Beta version
 
-Beta version release is available on any branch except `master`, `maintenance`. The
-main use cases are for releasing a patch before the official release, or create custom builds
-with new features (or friday releases).
+Beta version release is available on any branch except `master`, `maintenance`. The main use cases are for releasing a patch before the official release, or create custom builds with new features (or friday releases).
 
 If you're on a feature branch (either for a fix or a new minor/major version), you can run:
 
@@ -353,12 +216,22 @@ You can also release a beta version from `develop`, using the beta flag in the c
 npm run release -- --beta
 ```
 
-**Be sure to use `$ npm run` instead of `$ yarn run` to avoid issues**
+_Make sure to use `npm run` instead of `yarn run` to avoid issues._
 
-## Updating the docs 📚
+#### Experimental TypeScript version
 
-The documentation website is created and pushed during the release of main version.
+An experimental version containing the TypeScript declaration files is available on the npm tag `experimental-typescript`.
 
-<!-- Links -->
+Since some of these declaration files are generated from the JSDoc comments, they can contain some typing errors. This version will stay experimental until we are confident enough in the generated declarations to put them in a stable release.
 
-[website]: https://community.algolia.com/instantsearch.js
+To generate the experimental TypeScript version for a particular release, run:
+
+```sh
+git checkout v4.X.X
+VERSION=4.X.X-experimental-typescript.X node ./scripts/release/bump-package-version.js
+yarn build
+yarn build:types
+sed -i '/"main":/ a \ "types": "es/index.d.ts",' package.json # Add `types` entry in `package.json`
+npm publish --tag experimental-typescript
+git checkout .
+```

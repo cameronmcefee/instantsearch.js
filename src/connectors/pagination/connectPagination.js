@@ -1,31 +1,19 @@
-import { checkRendering } from '../../lib/utils.js';
+import {
+  checkRendering,
+  createDocumentationMessageGenerator,
+  noop,
+} from '../../lib/utils';
 import Paginator from './Paginator';
 
-const usage = `Usage:
-var customPagination = connectPagination(function render(params, isFirstRendering) {
-  // params = {
-  //   createURL,
-  //   currentRefinement,
-  //   nbHits,
-  //   nbPages,
-  //   pages,
-  //   refine,
-  //   widgetParams,
-  // }
+const withUsage = createDocumentationMessageGenerator({
+  name: 'pagination',
+  connector: true,
 });
-search.addWidget(
-  customPagination({
-    [ maxPages ]
-    [ padding ]
-  })
-);
-Full documentation available at https://community.algolia.com/instantsearch.js/v2/connectors/connectPagination.html
-`;
 
 /**
  * @typedef {Object} CustomPaginationWidgetOptions
- * @property {number} [maxPages] The max number of pages to browse.
- * @property {number} [padding=3] The padding of pages to show around the current page
+ * @property {number} [totalPages] The total number of pages to browse.
+ * @property {number} [padding = 3] The padding of pages to show around the current page
  */
 
 /**
@@ -89,19 +77,19 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
  * var customPagination = instantsearch.connectors.connectPagination(renderFn);
  *
  * // mount widget on the page
- * search.addWidget(
+ * search.addWidgets([
  *   customPagination({
  *     containerNode: $('#custom-pagination-container'),
- *     maxPages: 20,
+ *     totalPages: 20,
  *     padding: 4,
  *   })
- * );
+ * ]);
  */
-export default function connectPagination(renderFn, unmountFn) {
-  checkRendering(renderFn, usage);
+export default function connectPagination(renderFn, unmountFn = noop) {
+  checkRendering(renderFn, withUsage());
 
   return (widgetParams = {}) => {
-    const { maxPages, padding = 3 } = widgetParams;
+    const { totalPages, padding = 3 } = widgetParams;
 
     const pager = new Paginator({
       currentPage: 0,
@@ -110,6 +98,8 @@ export default function connectPagination(renderFn, unmountFn) {
     });
 
     return {
+      $$type: 'ais.pagination',
+
       init({ helper, createURL, instantSearchInstance }) {
         this.refine = page => {
           helper.setPage(page);
@@ -121,7 +111,7 @@ export default function connectPagination(renderFn, unmountFn) {
         renderFn(
           {
             createURL: this.createURL(helper.state),
-            currentRefinement: helper.getPage() || 0,
+            currentRefinement: helper.state.page || 0,
             nbHits: 0,
             nbPages: 0,
             pages: [],
@@ -136,18 +126,21 @@ export default function connectPagination(renderFn, unmountFn) {
       },
 
       getMaxPage({ nbPages }) {
-        return maxPages !== undefined ? Math.min(maxPages, nbPages) : nbPages;
+        return totalPages !== undefined
+          ? Math.min(totalPages, nbPages)
+          : nbPages;
       },
 
       render({ results, state, instantSearchInstance }) {
+        const page = state.page || 0;
         const nbPages = this.getMaxPage(results);
-        pager.currentPage = state.page;
+        pager.currentPage = page;
         pager.total = nbPages;
 
         renderFn(
           {
             createURL: this.createURL(state),
-            currentRefinement: state.page,
+            currentRefinement: page,
             refine: this.refine,
             nbHits: results.nbHits,
             nbPages,
@@ -161,13 +154,19 @@ export default function connectPagination(renderFn, unmountFn) {
         );
       },
 
-      dispose() {
+      dispose({ state }) {
         unmountFn();
+
+        return state.setQueryParameter('page', undefined);
       },
 
       getWidgetState(uiState, { searchParameters }) {
-        const page = searchParameters.page;
-        if (page === 0 || page + 1 === uiState.page) return uiState;
+        const page = searchParameters.page || 0;
+
+        if (!page) {
+          return uiState;
+        }
+
         return {
           ...uiState,
           page: page + 1,
@@ -175,10 +174,9 @@ export default function connectPagination(renderFn, unmountFn) {
       },
 
       getWidgetSearchParameters(searchParameters, { uiState }) {
-        const uiPage = uiState.page;
-        if (uiPage)
-          return searchParameters.setQueryParameter('page', uiState.page - 1);
-        return searchParameters.setQueryParameter('page', 0);
+        const page = uiState.page ? uiState.page - 1 : 0;
+
+        return searchParameters.setQueryParameter('page', page);
       },
     };
   };

@@ -1,9 +1,11 @@
-import ReactDOM from 'preact-compat';
-import AlgoliasearchHelper from 'algoliasearch-helper';
-import rangeInput from '../range-input.js';
+/** @jsx h */
 
-jest.mock('preact-compat', () => {
-  const module = require.requireActual('preact-compat');
+import { render } from 'preact';
+import AlgoliasearchHelper from 'algoliasearch-helper';
+import rangeInput from '../range-input';
+
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
 
   module.render = jest.fn();
 
@@ -11,9 +13,9 @@ jest.mock('preact-compat', () => {
 });
 
 describe('rangeInput', () => {
-  const attributeName = 'aNumAttr';
+  const attribute = 'aNumAttr';
   const createContainer = () => document.createElement('div');
-  const instantSearchInstance = { templatesConfig: undefined };
+  const instantSearchInstance = {};
   const createHelper = () =>
     new AlgoliasearchHelper(
       {
@@ -22,11 +24,56 @@ describe('rangeInput', () => {
         },
       },
       'indexName',
-      { disjunctiveFacets: [attributeName] }
+      { disjunctiveFacets: [attribute] }
     );
 
   afterEach(() => {
-    ReactDOM.render.mockReset();
+    render.mockReset();
+  });
+
+  describe('Usage', () => {
+    it('throws without container', () => {
+      expect(() => rangeInput({ container: undefined }))
+        .toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/range-input/js/"
+`);
+    });
+
+    it('is a widget', () => {
+      const container = document.createElement('div');
+      const widget = rangeInput({ container, attribute: 'price' });
+
+      expect(widget).toEqual(
+        expect.objectContaining({
+          $$type: 'ais.rangeInput',
+        })
+      );
+    });
+  });
+
+  describe('Lifecycle', () => {
+    describe('dispose', () => {
+      it('unmounts the component', () => {
+        const container = document.createElement('div');
+        const helper = createHelper();
+        const widget = rangeInput({
+          attribute: 'price',
+          container,
+        });
+
+        expect(render).toHaveBeenCalledTimes(0);
+
+        widget.dispose({
+          state: helper.state,
+          helper,
+        });
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render).toHaveBeenLastCalledWith(null, container);
+      });
+    });
   });
 
   it('expect to render with results', () => {
@@ -35,7 +82,7 @@ describe('rangeInput', () => {
     const results = {
       disjunctiveFacets: [
         {
-          name: attributeName,
+          name: attribute,
           stats: {
             min: 10,
             max: 500,
@@ -46,16 +93,18 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0].props.min).toBe(10);
-    expect(ReactDOM.render.mock.calls[0][0].props.max).toBe(500);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props.min).toBe(10);
+    expect(firstRender[0].props.max).toBe(500);
+    expect(firstRender[0].props).toMatchSnapshot();
   });
 
   it('expect to render without results', () => {
@@ -65,14 +114,16 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props).toMatchSnapshot();
   });
 
   it('expect to render with custom classNames', () => {
@@ -82,49 +133,50 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
       cssClasses: {
-        root: 'custom-root',
-        header: 'custom-header',
-        body: 'custom-body',
-        form: 'custom-form',
-        fieldset: 'custom-fieldset',
-        labelMin: 'custom-labelMin',
-        inputMin: 'custom-inputMin',
-        separator: 'custom-separator',
-        labelMax: 'custom-labelMax',
-        inputMax: 'custom-inputMax',
-        submit: 'custom-submit',
-        footer: 'custom-footer',
+        root: 'root',
+        noRefinement: 'noRefinement',
+        form: 'form',
+        label: 'label',
+        input: 'input',
+        inputMin: 'inputMin',
+        inputMax: 'inputMax',
+        separator: 'separator',
+        submit: 'submit',
       },
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props).toMatchSnapshot();
   });
 
-  it('expect to render with custom labels', () => {
+  it('expect to render with custom templates', () => {
     const container = createContainer();
     const helper = createHelper();
     const results = [];
 
     const widget = rangeInput({
       container,
-      attributeName,
-      labels: {
-        separator: 'custom-separator',
-        submit: 'custom-submit',
+      attribute,
+      templates: {
+        separatorText: 'custom separator',
+        submitText: 'custom submit',
       },
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props).toMatchSnapshot();
   });
 
   it('expect to render with min', () => {
@@ -134,15 +186,17 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
       min: 20,
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0].props.min).toBe(20);
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props.min).toBe(20);
   });
 
   it('expect to render with max', () => {
@@ -152,15 +206,17 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
       max: 480,
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0].props.max).toBe(480);
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props.max).toBe(480);
   });
 
   it('expect to render with refinement', () => {
@@ -169,7 +225,7 @@ describe('rangeInput', () => {
     const results = {
       disjunctiveFacets: [
         {
-          name: attributeName,
+          name: attribute,
           stats: {
             min: 10,
             max: 500,
@@ -178,20 +234,22 @@ describe('rangeInput', () => {
       ],
     };
 
-    helper.addNumericRefinement(attributeName, '>=', 25);
-    helper.addNumericRefinement(attributeName, '<=', 475);
+    helper.addNumericRefinement(attribute, '>=', 25);
+    helper.addNumericRefinement(attribute, '<=', 475);
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
     });
 
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    expect(ReactDOM.render.mock.calls[0][0].props.values).toEqual({
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props).toMatchSnapshot();
+    expect(firstRender[0].props.values).toEqual({
       min: 25,
       max: 475,
     });
@@ -202,12 +260,12 @@ describe('rangeInput', () => {
     const helper = createHelper();
     const results = {};
 
-    helper.addNumericRefinement(attributeName, '>=', 10);
-    helper.addNumericRefinement(attributeName, '<=', 500);
+    helper.addNumericRefinement(attribute, '>=', 10);
+    helper.addNumericRefinement(attribute, '<=', 500);
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
       min: 10,
       max: 500,
     });
@@ -215,32 +273,14 @@ describe('rangeInput', () => {
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-    expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    expect(ReactDOM.render.mock.calls[0][0].props.values).toEqual({
+    const [firstRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(firstRender[0].props).toMatchSnapshot();
+    expect(firstRender[0].props.values).toEqual({
       min: undefined,
       max: undefined,
     });
-  });
-
-  it('expect to render hidden', () => {
-    const container = createContainer();
-    const helper = createHelper();
-    const results = [];
-
-    const widget = rangeInput({
-      container,
-      attributeName,
-      min: 20,
-      max: 20,
-    });
-
-    widget.init({ helper, instantSearchInstance });
-    widget.render({ results, helper });
-
-    expect(ReactDOM.render.mock.calls[0][0].props.shouldAutoHideContainer).toBe(
-      true
-    );
   });
 
   it('expect to call refine', () => {
@@ -251,7 +291,7 @@ describe('rangeInput', () => {
 
     const widget = rangeInput({
       container,
-      attributeName,
+      attribute,
     });
 
     // Override _refine behavior to be able to check
@@ -261,7 +301,9 @@ describe('rangeInput', () => {
     widget.init({ helper, instantSearchInstance });
     widget.render({ results, helper });
 
-    ReactDOM.render.mock.calls[0][0].props.refine([25, 475]);
+    const [firstRender] = render.mock.calls;
+
+    firstRender[0].props.refine([25, 475]);
 
     expect(refine).toHaveBeenCalledWith([25, 475]);
   });
@@ -274,15 +316,17 @@ describe('rangeInput', () => {
 
       const widget = rangeInput({
         container,
-        attributeName,
+        attribute,
         precision: 2,
       });
 
       widget.init({ helper, instantSearchInstance });
       widget.render({ results, helper });
 
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(ReactDOM.render.mock.calls[0][0].props.step).toBe(0.01);
+      const [firstRender] = render.mock.calls;
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(firstRender[0].props.step).toBe(0.01);
     });
 
     it('expect to render with precision of 0', () => {
@@ -292,15 +336,17 @@ describe('rangeInput', () => {
 
       const widget = rangeInput({
         container,
-        attributeName,
+        attribute,
         precision: 0,
       });
 
       widget.init({ helper, instantSearchInstance });
       widget.render({ results, helper });
 
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(ReactDOM.render.mock.calls[0][0].props.step).toBe(1);
+      const [firstRender] = render.mock.calls;
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(firstRender[0].props.step).toBe(1);
     });
 
     it('expect to render with precision of 1', () => {
@@ -310,29 +356,17 @@ describe('rangeInput', () => {
 
       const widget = rangeInput({
         container,
-        attributeName,
+        attribute,
         precision: 1,
       });
 
       widget.init({ helper, instantSearchInstance });
       widget.render({ results, helper });
 
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(ReactDOM.render.mock.calls[0][0].props.step).toBe(0.1);
-    });
-  });
+      const [firstRender] = render.mock.calls;
 
-  describe('throws', () => {
-    it('throws an exception when no container', () => {
-      expect(() => rangeInput({ attributeName: '' })).toThrow(/^Usage:/);
-    });
-
-    it('throws an exception when no attributeName', () => {
-      expect(() =>
-        rangeInput({
-          container: document.createElement('div'),
-        })
-      ).toThrow(/^Usage:/);
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(firstRender[0].props.step).toBe(0.1);
     });
   });
 });

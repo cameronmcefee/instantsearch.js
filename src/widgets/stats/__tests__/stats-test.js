@@ -1,27 +1,36 @@
-import expect from 'expect';
-import sinon from 'sinon';
+import { render } from 'preact';
 import stats from '../stats';
+
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
 
 const instantSearchInstance = { templatesConfig: undefined };
 
-describe('stats call', () => {
-  it('should throw when called without container', () => {
-    expect(() => stats()).toThrow(/^Usage:/);
+describe('Usage', () => {
+  it('throws without container', () => {
+    expect(() => {
+      stats({ container: undefined });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/stats/js/"
+`);
   });
 });
 
 describe('stats()', () => {
-  let ReactDOM;
   let container;
   let widget;
   let results;
 
   beforeEach(() => {
-    ReactDOM = { render: sinon.spy() };
-    stats.__Rewire__('render', ReactDOM.render);
-
     container = document.createElement('div');
-    widget = stats({ container, cssClasses: { body: ['body', 'cx'] } });
+    widget = stats({ container, cssClasses: { text: ['text', 'cx'] } });
     results = {
       hits: [{}, {}],
       nbHits: 20,
@@ -36,28 +45,20 @@ describe('stats()', () => {
       helper: { state: {} },
       instantSearchInstance,
     });
+
+    render.mockClear();
   });
 
-  it('configures nothing', () => {
-    expect(widget.getConfiguration).toEqual(undefined);
-  });
-
-  it('calls twice ReactDOM.render(<Stats props />, container)', () => {
+  it('calls twice render(<Stats props />, container)', () => {
     widget.render({ results, instantSearchInstance });
     widget.render({ results, instantSearchInstance });
-    expect(ReactDOM.render.calledTwice).toBe(
-      true,
-      'ReactDOM.render called twice'
-    );
-    expect(ReactDOM.render.firstCall.args[0]).toMatchSnapshot();
-    expect(ReactDOM.render.firstCall.args[1]).toEqual(container);
-    expect(ReactDOM.render.secondCall.args[0]).toMatchSnapshot();
-    expect(ReactDOM.render.secondCall.args[1]).toEqual(container);
-  });
 
-  afterEach(() => {
-    stats.__ResetDependency__('render');
-    stats.__ResetDependency__('autoHideContainerHOC');
-    stats.__ResetDependency__('headerFooterHOC');
+    const [firstRender, secondRender] = render.mock.calls;
+
+    expect(render).toHaveBeenCalledTimes(2);
+    expect(firstRender[0].props).toMatchSnapshot();
+    expect(firstRender[1]).toEqual(container);
+    expect(secondRender[0].props).toMatchSnapshot();
+    expect(secondRender[1]).toEqual(container);
   });
 });

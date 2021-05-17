@@ -1,4 +1,6 @@
-import React from 'react';
+/** @jsx h */
+
+import { h } from 'preact';
 import { shallow } from 'enzyme';
 import RefinementListItem from '../RefinementListItem';
 
@@ -8,7 +10,7 @@ describe('RefinementListItem', () => {
     facetValueToRefine: 'wi',
     isRefined: false,
     handleClick: jest.fn(),
-    itemClassName: 'item class',
+    className: 'item class',
     templateData: { template: 'data' },
     templateKey: 'item key',
     templateProps: { template: 'props' },

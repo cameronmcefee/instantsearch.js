@@ -1,7 +1,10 @@
-dist/
-dist-es5-module/
-docs/
-docs.old/
-docgen/
+/dist
+/cjs
+/es
+/website
 node_modules/
-es/
+
+# TODO: don't ignore these examples once they're updated
+/examples/calendar-widget
+/examples/media
+/examples/tourism

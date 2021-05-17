@@ -1,65 +1,121 @@
+import { render } from 'preact';
+import algoliasearchHelper, { SearchParameters } from 'algoliasearch-helper';
 import menuSelect from '../menu-select';
 
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
+
 describe('menuSelect', () => {
-  it('throws an exception when no attributeName', () => {
-    const container = document.createElement('div');
-    expect(menuSelect.bind(null, { container })).toThrow(/^Usage/);
+  describe('Usage', () => {
+    it('throws without container ', () => {
+      expect(() => {
+        menuSelect({ container: undefined });
+      }).toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/menu-select/js/"
+`);
+    });
   });
 
-  it('throws an exception when no container', () => {
-    const attributeName = 'categories';
-    expect(menuSelect.bind(null, { attributeName })).toThrow(/^Usage/);
-  });
-
-  describe('render', () => {
-    let ReactDOM;
+  describe('Lifecycle', () => {
     let data;
     let results;
     let state;
     let helper;
 
     beforeEach(() => {
-      ReactDOM = { render: jest.fn() };
-      menuSelect.__Rewire__('render', ReactDOM.render);
-
       data = { data: [{ name: 'foo' }, { name: 'bar' }] };
       results = { getFacetValues: jest.fn(() => data) };
-      state = { toggleRefinement: jest.fn() };
-      helper = {
-        toggleRefinement: jest.fn().mockReturnThis(),
-        search: jest.fn(),
-        state,
-      };
+      helper = algoliasearchHelper({}, 'index_name');
+      helper.search = jest.fn();
+      state = helper.state;
+
+      render.mockClear();
     });
 
-    it('renders correctly', () => {
-      const widget = menuSelect({
-        container: document.createElement('div'),
-        attributeName: 'test',
+    describe('render', () => {
+      it('renders correctly', () => {
+        const widget = menuSelect({
+          container: document.createElement('div'),
+          attribute: 'test',
+        });
+
+        widget.init({
+          helper,
+          createURL: () => '#',
+          instantSearchInstance: {},
+        });
+        widget.render({ results, createURL: () => '#', state });
+
+        const [firstRender] = render.mock.calls;
+
+        expect(firstRender[0].props).toMatchSnapshot();
       });
 
-      widget.init({ helper, createURL: () => '#', instantSearchInstance: {} });
-      widget.render({ results, createURL: () => '#', state });
+      it('renders transformed items correctly', () => {
+        const widget = menuSelect({
+          container: document.createElement('div'),
+          attribute: 'test',
+          transformItems: items =>
+            items.map(item => ({ ...item, transformed: true })),
+        });
 
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
+        widget.init({
+          helper,
+          createURL: () => '#',
+          instantSearchInstance: {},
+        });
+        widget.render({ results, createURL: () => '#', state });
 
-    it('renders transformed items correctly', () => {
-      const widget = menuSelect({
-        container: document.createElement('div'),
-        attributeName: 'test',
-        transformItems: items =>
-          items.map(item => ({ ...item, transformed: true })),
+        const [firstRender] = render.mock.calls;
+
+        expect(firstRender[0].props).toMatchSnapshot();
       });
-
-      widget.init({ helper, createURL: () => '#', instantSearchInstance: {} });
-      widget.render({ results, createURL: () => '#', state });
-
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
     });
 
-    afterEach(() => {
-      menuSelect.__ResetDependency__('render');
+    describe('dispose', () => {
+      it('unmounts the component', () => {
+        const container = document.createElement('div');
+        const widget = menuSelect({
+          attribute: 'test',
+          container,
+        });
+
+        helper.setState(
+          widget.getWidgetSearchParameters(new SearchParameters({}), {
+            uiState: {
+              menu: {
+                amazingBrand: 'algolia',
+              },
+            },
+          })
+        );
+
+        expect(helper.state).toEqual(
+          new SearchParameters({
+            hierarchicalFacets: [{ attributes: ['test'], name: 'test' }],
+            hierarchicalFacetsRefinements: { test: [] },
+            maxValuesPerFacet: 10,
+          })
+        );
+
+        expect(render).toHaveBeenCalledTimes(0);
+
+        const newState = widget.dispose({
+          state: helper.state,
+          helper,
+        });
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(render).toHaveBeenLastCalledWith(null, container);
+        expect(newState).toEqual(new SearchParameters());
+      });
     });
   });
 });

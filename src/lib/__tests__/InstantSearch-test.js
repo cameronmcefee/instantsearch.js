@@ -1,664 +1,1566 @@
-import range from 'lodash/range';
-import times from 'lodash/times';
-import sinon from 'sinon';
-
-import algoliaSearchHelper from 'algoliasearch-helper';
+import algoliasearchHelper from 'algoliasearch-helper';
 import InstantSearch from '../InstantSearch';
+import version from '../version';
+import connectSearchBox from '../../connectors/search-box/connectSearchBox';
+import connectPagination from '../../connectors/pagination/connectPagination';
+import index from '../../widgets/index/index';
+import { noop, warning } from '../utils';
+import {
+  createSearchClient,
+  createControlledSearchClient,
+} from '../../../test/mock/createSearchClient';
+import { createWidget } from '../../../test/mock/createWidget';
+import { runAllMicroTasks } from '../../../test/utils/runAllMicroTasks';
 
-describe('InstantSearch lifecycle', () => {
-  let algoliasearch;
-  let helperStub;
-  let client;
-  let helper;
-  let appId;
-  let apiKey;
-  let indexName;
-  let searchParameters;
-  let search;
-  let helperSearchSpy;
-  let urlSync;
+jest.useFakeTimers();
 
-  beforeEach(() => {
-    client = { algolia: 'client' };
-    helper = algoliaSearchHelper(client);
+jest.mock('algoliasearch-helper', () => {
+  const module = require.requireActual('algoliasearch-helper');
+  const mock = jest.fn((...args) => {
+    const helper = module(...args);
 
-    // when using searchFunction, we lose the reference to
-    // the original helper.search
-    const spy = sinon.spy();
+    const searchOnlyWithDerivedHelpers = helper.searchOnlyWithDerivedHelpers.bind(
+      helper
+    );
 
-    helper.search = spy;
-    helperSearchSpy = spy;
+    helper.searchOnlyWithDerivedHelpers = jest.fn((...searchArgs) => {
+      return searchOnlyWithDerivedHelpers(...searchArgs);
+    });
 
-    urlSync = {
-      createURL: sinon.spy(),
-      onHistoryChange: () => {},
-      getConfiguration: sinon.spy(),
-      render: () => {},
-    };
+    return helper;
+  });
 
-    algoliasearch = sinon.stub().returns(client);
-    helperStub = sinon.stub().returns(helper);
+  Object.entries(module).forEach(([key, value]) => {
+    mock[key] = value;
+  });
 
-    appId = 'appId';
-    apiKey = 'apiKey';
-    indexName = 'lifecycle';
+  return mock;
+});
 
-    searchParameters = {
-      some: 'configuration',
-      values: [-2, -1],
-      index: indexName,
-      another: { config: 'parameter' },
-    };
+beforeEach(() => {
+  algoliasearchHelper.mockClear();
+});
 
-    InstantSearch.__Rewire__('urlSyncWidget', () => urlSync);
-    InstantSearch.__Rewire__('algoliasearch', algoliasearch);
-    InstantSearch.__Rewire__('algoliasearchHelper', helperStub);
+describe('Usage', () => {
+  it('throws without indexName', () => {
+    expect(() => {
+      // eslint-disable-next-line no-new
+      new InstantSearch({ indexName: undefined });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`indexName\` option is required.
 
-    search = new InstantSearch({
-      appId,
-      apiKey,
-      indexName,
-      searchParameters,
-      urlSync: {},
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+
+  it('throws without searchClient', () => {
+    expect(() => {
+      // eslint-disable-next-line no-new
+      new InstantSearch({ indexName: 'indexName', searchClient: undefined });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`searchClient\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+
+  it('throws if searchClient does not implement a search method', () => {
+    expect(() => {
+      // eslint-disable-next-line no-new
+      new InstantSearch({ indexName: 'indexName', searchClient: {} });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`searchClient\` must implement a \`search\` method.
+
+See: https://www.algolia.com/doc/guides/building-search-ui/going-further/backend-search/in-depth/backend-instantsearch/js/"
+`);
+  });
+
+  it('throws if insightsClient is not a function', () => {
+    expect(() => {
+      // eslint-disable-next-line no-new
+      new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+        insightsClient: 'insights',
+      });
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`insightsClient\` option should be a function.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+  describe('when insights client is detected', () => {
+    const warningMessage = `[InstantSearch.js]: InstantSearch detected the Insights client in the global scope.
+To connect InstantSearch to the Insights client, make sure to specify the \`insightsClient\` option:
+
+const search = instantsearch({
+  /* ... */
+  insightsClient: window.aa,
+});
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/`;
+
+    it('throws a warning if insightsClient was not passed', () => {
+      warning.cache = {};
+
+      const AlgoliaAnalyticsObject = 'aa';
+      global.AlgoliaAnalyticsObject = AlgoliaAnalyticsObject;
+      global[AlgoliaAnalyticsObject] = jest.fn();
+
+      expect(() => {
+        // eslint-disable-next-line no-new
+        new InstantSearch({
+          indexName: 'indexName',
+          searchClient: createSearchClient(),
+        });
+      }).toWarnDev(warningMessage);
+
+      delete global.AlgoliaAnalyticsObject;
+      delete global[AlgoliaAnalyticsObject];
+    });
+
+    it('does not throw a warning if insightsClient was passed', () => {
+      warning.cache = {};
+
+      const AlgoliaAnalyticsObject = 'aa';
+      global.AlgoliaAnalyticsObject = AlgoliaAnalyticsObject;
+      global[AlgoliaAnalyticsObject] = jest.fn();
+
+      expect(() => {
+        // eslint-disable-next-line no-new
+        new InstantSearch({
+          indexName: 'indexName',
+          searchClient: createSearchClient(),
+          insightsClient: jest.fn(),
+        });
+      }).not.toWarnDev(warningMessage);
+
+      delete global.AlgoliaAnalyticsObject;
+      delete global[AlgoliaAnalyticsObject];
     });
   });
 
-  afterEach(() => {
-    InstantSearch.__ResetDependency__('urlSyncWidget');
-    InstantSearch.__ResetDependency__('algoliasearch');
-    InstantSearch.__ResetDependency__('algoliasearchHelper');
+  it('throws if addWidgets is called with a single widget', () => {
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.addWidgets({});
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`addWidgets\` method expects an array of widgets. Please use \`addWidget\`.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
   });
 
-  it('calls algoliasearch(appId, apiKey)', () => {
-    expect(algoliasearch.calledOnce).toBe(true, 'algoliasearch called once');
-    expect(algoliasearch.args[0]).toEqual([appId, apiKey]);
+  it('throws if a widget without render or init method is added', () => {
+    const widgets = [{ render: undefined, init: undefined }];
+
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.addWidgets(widgets);
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The widget definition expects a \`render\` and/or an \`init\` method.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
   });
 
-  it('does not call algoliasearchHelper', () => {
-    expect(helperStub.notCalled).toBe(
-      true,
-      'algoliasearchHelper not yet called'
+  it('does not throw with a widget having a init method', () => {
+    const widgets = [{ init: () => {} }];
+
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.addWidgets(widgets);
+    }).not.toThrow();
+  });
+
+  it('does not throw with a widget having a render method', () => {
+    const widgets = [{ render: () => {} }];
+
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.addWidgets(widgets);
+    }).not.toThrow();
+  });
+
+  it('throws if removeWidgets is called with a single widget', () => {
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.removeWidgets({});
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`removeWidgets\` method expects an array of widgets. Please use \`removeWidget\`.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+
+  it('throws if a widget without dispose method is removed', () => {
+    const widgets = [{ init: () => {}, render: () => {}, dispose: undefined }];
+
+    expect(() => {
+      const search = new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+      });
+      search.removeWidgets(widgets);
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The widget definition expects a \`dispose\` method.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+
+  it('throws if createURL is called before start', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    expect(() => search.createURL()).toThrowErrorMatchingInlineSnapshot(`
+"The \`start\` method needs to be called before \`createURL\`.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+
+  it('throws if refresh is called before start', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    expect(() => search.refresh()).toThrowErrorMatchingInlineSnapshot(`
+"The \`start\` method needs to be called before \`refresh\`.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+});
+
+describe('InstantSearch', () => {
+  it('calls addAlgoliaAgent', () => {
+    const searchClient = createSearchClient({
+      addAlgoliaAgent: jest.fn(),
+    });
+
+    // eslint-disable-next-line no-new
+    new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(searchClient.addAlgoliaAgent).toHaveBeenCalledTimes(1);
+    expect(searchClient.addAlgoliaAgent).toHaveBeenCalledWith(
+      `instantsearch.js (${version})`
     );
   });
 
-  describe('when providing a custom client module', () => {
-    let createAlgoliaClient;
-    let customAppID;
-    let customApiKey;
-
-    beforeEach(() => {
-      // InstantSearch is being called once at the top-level context, so reset the `algoliasearch` spy
-      algoliasearch.resetHistory();
-
-      // Create a spy to act as a clientInstanceFunction that returns a custom client
-      createAlgoliaClient = sinon.stub().returns(client);
-      customAppID = 'customAppID';
-      customApiKey = 'customAPIKey';
-
-      // Create a new InstantSearch instance with custom client function
-      search = new InstantSearch({
-        appId: customAppID,
-        apiKey: customApiKey,
-        indexName,
-        searchParameters,
-        urlSync: {},
-        createAlgoliaClient,
-      });
+  it('does not call algoliasearchHelper', () => {
+    // eslint-disable-next-line no-new
+    new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
     });
 
-    it('does not call algoliasearch directly', () => {
-      expect(algoliasearch.calledOnce).toBe(false, 'algoliasearch not called');
-    });
-
-    it('calls createAlgoliaClient(appId, apiKey)', () => {
-      expect(createAlgoliaClient.calledOnce).toBe(
-        true,
-        'clientInstanceFunction called once'
-      );
-      expect(createAlgoliaClient.args[0]).toEqual([
-        algoliasearch,
-        customAppID,
-        customApiKey,
-      ]);
-    });
+    expect(algoliasearchHelper).not.toHaveBeenCalled();
   });
 
-  describe('when adding a widget without render and init', () => {
-    let widget;
+  it('warns deprecated usage of `searchParameters`', () => {
+    warning.cache = {};
 
-    beforeEach(() => {
-      widget = {};
-    });
-
-    it('throw an error', () => {
-      expect(() => {
-        search.addWidget(widget);
-      }).toThrow('Widget definition missing render or init method');
-    });
-  });
-
-  it('does not fail when passing same references inside multiple searchParameters props', () => {
-    const disjunctiveFacetsRefinements = { fruits: ['apple'] };
-    const facetsRefinements = disjunctiveFacetsRefinements;
-    search = new InstantSearch({
-      appId,
-      apiKey,
-      indexName,
-      searchParameters: {
-        disjunctiveFacetsRefinements,
-        facetsRefinements,
-      },
-    });
-    search.addWidget({
-      getConfiguration: () => ({
-        disjunctiveFacetsRefinements: { fruits: ['orange'] },
-      }),
-      init: () => {},
-    });
-    search.start();
-    expect(search.searchParameters.facetsRefinements).toEqual({
-      fruits: ['apple'],
-    });
-  });
-
-  describe('when adding a widget', () => {
-    let widget;
-
-    beforeEach(() => {
-      widget = {
-        getConfiguration: sinon
-          .stub()
-          .returns({ some: 'modified', another: { different: 'parameter' } }),
-        init: sinon.spy(() => {
-          helper.state.sendMeToUrlSync = true;
-        }),
-        render: sinon.spy(),
-      };
-      search.addWidget(widget);
-    });
-
-    it('does not call widget.getConfiguration', () => {
-      expect(widget.getConfiguration.notCalled).toBe(true);
-    });
-
-    describe('when we call search.start', () => {
-      beforeEach(() => {
-        search.start();
-      });
-
-      it('calls widget.getConfiguration(searchParameters)', () => {
-        expect(widget.getConfiguration.args[0]).toEqual([
-          searchParameters,
-          undefined,
-        ]);
-      });
-
-      it('calls algoliasearchHelper(client, indexName, searchParameters)', () => {
-        expect(helperStub.calledOnce).toBe(
-          true,
-          'algoliasearchHelper called once'
-        );
-        expect(helperStub.args[0]).toEqual([
-          client,
-          indexName,
-          {
-            some: 'modified',
-            values: [-2, -1],
-            index: indexName,
-            another: { different: 'parameter', config: 'parameter' },
+    expect(() => {
+      // eslint-disable-next-line no-new
+      new InstantSearch({
+        indexName: 'indexName',
+        searchClient: createSearchClient(),
+        searchParameters: {
+          disjunctiveFacets: ['brand'],
+          disjunctiveFacetsRefinements: {
+            brand: ['Samsung'],
           },
-        ]);
-      });
-
-      it('calls helper.search()', () => {
-        expect(helperSearchSpy.calledOnce).toBe(true);
-      });
-
-      it('calls widget.init(helper.state, helper, templatesConfig)', () => {
-        expect(widget.init.calledOnce).toBe(true, 'widget.init called once');
-        expect(widget.init.calledAfter(widget.getConfiguration)).toBe(
-          true,
-          'widget.init() was called after widget.getConfiguration()'
-        );
-        const args = widget.init.args[0][0];
-        expect(args.state).toBe(helper.state);
-        expect(args.helper).toBe(helper);
-        expect(args.templatesConfig).toBe(search.templatesConfig);
-        expect(args.onHistoryChange).toBe(search._onHistoryChange);
-      });
-
-      it('calls urlSync.getConfiguration after every widget', () => {
-        expect(urlSync.getConfiguration.calledOnce).toBe(
-          true,
-          'urlSync.getConfiguration called once'
-        );
-        expect(
-          urlSync.getConfiguration.calledAfter(widget.getConfiguration)
-        ).toBe(true, 'urlSync.getConfiguration was called after widget.init');
-      });
-
-      it('does not call widget.render', () => {
-        expect(widget.render.notCalled).toBe(true);
-      });
-
-      describe('when we have results', () => {
-        let results;
-
-        beforeEach(() => {
-          results = { some: 'data' };
-          helper.emit('result', results, helper.state);
-        });
-
-        it('calls widget.render({results, state, helper, templatesConfig, instantSearchInstance})', () => {
-          expect(widget.render.calledOnce).toBe(
-            true,
-            'widget.render called once'
-          );
-          expect(widget.render.args[0]).toMatchSnapshot();
-        });
-      });
-    });
-  });
-
-  describe('when we have 5 widgets', () => {
-    let widgets;
-
-    beforeEach(() => {
-      widgets = range(5);
-      widgets = widgets.map((widget, widgetIndex) => ({
-        init() {},
-        getConfiguration: sinon.stub().returns({ values: [widgetIndex] }),
-      }));
-      widgets.forEach(search.addWidget, search);
-      search.start();
-    });
-
-    it('calls widget[x].getConfiguration in the orders the widgets were added', () => {
-      const order = widgets.every((widget, widgetIndex, filteredWidgets) => {
-        if (widgetIndex === 0) {
-          return (
-            widget.getConfiguration.calledOnce &&
-            widget.getConfiguration.calledBefore(
-              filteredWidgets[1].getConfiguration
-            )
-          );
-        }
-        const previousWidget = filteredWidgets[widgetIndex - 1];
-        return (
-          widget.getConfiguration.calledOnce &&
-          widget.getConfiguration.calledAfter(previousWidget.getConfiguration)
-        );
-      });
-
-      expect(order).toBe(true);
-    });
-
-    it('recursively merges searchParameters.values array', () => {
-      expect(helperStub.args[0][2].values).toEqual([-2, -1, 0, 1, 2, 3, 4]);
-    });
-  });
-
-  describe('when render happens', () => {
-    const render = sinon.spy();
-    beforeEach(() => {
-      render.resetHistory();
-      const widgets = range(5).map(() => ({ render }));
-
-      widgets.forEach(search.addWidget, search);
-
-      search.start();
-    });
-
-    it('has a createURL method', () => {
-      search.createURL({ hitsPerPage: 542 });
-      expect(urlSync.createURL.calledOnce).toBe(true);
-      expect(urlSync.createURL.getCall(0).args[0].hitsPerPage).toBe(542);
-    });
-
-    it('emits render when all render are done (using on)', () => {
-      const onRender = sinon.spy();
-      search.on('render', onRender);
-
-      expect(render.callCount).toEqual(0);
-      expect(onRender.callCount).toEqual(0);
-
-      helper.emit('result', {}, helper.state);
-
-      expect(render.callCount).toEqual(5);
-      expect(onRender.callCount).toEqual(1);
-      expect(render.calledBefore(onRender)).toBe(true);
-
-      helper.emit('result', {}, helper.state);
-
-      expect(render.callCount).toEqual(10);
-      expect(onRender.callCount).toEqual(2);
-    });
-
-    it('emits render when all render are done (using once)', () => {
-      const onRender = sinon.spy();
-      search.once('render', onRender);
-
-      expect(render.callCount).toEqual(0);
-      expect(onRender.callCount).toEqual(0);
-
-      helper.emit('result', {}, helper.state);
-
-      expect(render.callCount).toEqual(5);
-      expect(onRender.callCount).toEqual(1);
-      expect(render.calledBefore(onRender)).toBe(true);
-
-      helper.emit('result', {}, helper.state);
-
-      expect(render.callCount).toEqual(10);
-      expect(onRender.callCount).toEqual(1);
-    });
-  });
-
-  describe('When removing a widget', () => {
-    function registerWidget(
-      widgetGetConfiguration = {
-        facets: ['categories'],
-        maxValuesPerFacet: 10,
-      },
-      dispose = jest.fn()
-    ) {
-      const widget = {
-        getConfiguration: jest.fn(() => widgetGetConfiguration),
-        init: jest.fn(),
-        render: jest.fn(),
-        dispose,
-      };
-
-      search.addWidget(widget);
-
-      return widget;
-    }
-
-    beforeEach(() => {
-      search = new InstantSearch({
-        appId,
-        apiKey,
-        indexName,
-      });
-    });
-
-    it('should unmount a widget without configuration', () => {
-      const widget1 = registerWidget({});
-      const widget2 = registerWidget({});
-
-      expect(search.widgets).toHaveLength(2);
-
-      search.start();
-      search.removeWidget(widget1);
-      search.removeWidget(widget2);
-
-      expect(search.widgets).toHaveLength(0);
-    });
-
-    it('should unmount a widget with facets configuration', () => {
-      const widget1 = registerWidget({ facets: ['price'] }, ({ state }) =>
-        state.removeFacet('price')
-      );
-      search.start();
-
-      expect(search.widgets).toHaveLength(1);
-      expect(search.searchParameters.facets).toEqual(['price']);
-
-      search.removeWidget(widget1);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.facets).toEqual([]);
-    });
-
-    it('should unmount a widget with hierarchicalFacets configuration', () => {
-      const widget1 = registerWidget(
-        {
-          hierarchicalFacets: [
-            {
-              name: 'price',
-              attributes: ['foo'],
-              separator: ' > ',
-              rootPath: 'lvl1',
-              showParentLevel: true,
-            },
-          ],
         },
-        ({ state }) => state.removeHierarchicalFacet('price')
-      );
-      search.start();
-
-      expect(search.widgets).toHaveLength(1);
-      expect(search.searchParameters.hierarchicalFacets).toEqual([
-        {
-          name: 'price',
-          attributes: ['foo'],
-          separator: ' > ',
-          rootPath: 'lvl1',
-          showParentLevel: true,
-        },
-      ]);
-
-      search.removeWidget(widget1);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.hierarchicalFacets).toEqual([]);
-    });
-
-    it('should unmount a widget with disjunctiveFacets configuration', () => {
-      const widget1 = registerWidget(
-        { disjunctiveFacets: ['price'] },
-        ({ state }) => state.removeDisjunctiveFacet('price')
-      );
-      search.start();
-
-      expect(search.widgets).toHaveLength(1);
-      expect(search.searchParameters.disjunctiveFacets).toEqual(['price']);
-
-      search.removeWidget(widget1);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.disjunctiveFacets).toEqual([]);
-    });
-
-    it('should unmount a widget with numericRefinements configuration', () => {
-      const widget1 = registerWidget(
-        { numericRefinements: { price: {} } },
-        ({ state }) => state.removeNumericRefinement('price')
-      );
-      search.start();
-
-      expect(search.widgets).toHaveLength(1);
-      expect(search.searchParameters.numericRefinements).toEqual({ price: {} });
-
-      search.removeWidget(widget1);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.numericRefinements).toEqual({});
-    });
-
-    it('should unmount a widget with maxValuesPerFacet configuration', () => {
-      const widget1 = registerWidget(undefined, ({ state }) =>
-        state
-          .removeFacet('categories')
-          .setQueryParameters('maxValuesPerFacet', undefined)
-      );
-      search.start();
-
-      expect(search.widgets).toHaveLength(1);
-      expect(search.searchParameters.facets).toEqual(['categories']);
-      expect(search.searchParameters.maxValuesPerFacet).toEqual(10);
-
-      search.removeWidget(widget1);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.facets).toEqual([]);
-      expect(search.searchParameters.maxValuesPerFacet).toBe(undefined);
-    });
-
-    it('should unmount multiple widgets at once', () => {
-      const widget1 = registerWidget(
-        { numericRefinements: { price: {} } },
-        ({ state }) => state.removeNumericRefinement('price')
-      );
-      const widget2 = registerWidget(
-        { disjunctiveFacets: ['price'] },
-        ({ state }) => state.removeDisjunctiveFacet('price')
-      );
-
-      search.start();
-
-      expect(search.widgets).toHaveLength(2);
-      expect(search.searchParameters.numericRefinements).toEqual({ price: {} });
-      expect(search.searchParameters.disjunctiveFacets).toEqual(['price']);
-
-      search.removeWidgets([widget1, widget2]);
-
-      expect(search.widgets).toHaveLength(0);
-      expect(search.searchParameters.numericRefinements).toEqual({});
-      expect(search.searchParameters.disjunctiveFacets).toEqual([]);
-    });
-
-    it('should unmount a widget without calling URLSync widget getConfiguration', () => {
-      // fake url-sync widget
-      const spy = jest.fn();
-
-      class URLSync {
-        constructor() {
-          this.getConfiguration = spy;
-          this.init = jest.fn();
-          this.render = jest.fn();
-          this.dispose = jest.fn();
-        }
-      }
-
-      const urlSyncWidget = new URLSync();
-      expect(urlSyncWidget.constructor.name).toEqual('URLSync');
-
-      search.addWidget(urlSyncWidget);
-
-      // add fake widget to dispose
-      // that returns a `nextState` while dispose
-      const widget1 = registerWidget(
-        undefined,
-        jest.fn(({ state: nextState }) => nextState)
-      );
-
-      const widget2 = registerWidget();
-      search.start();
-
-      // remove widget1
-      search.removeWidget(widget1);
-
-      // it should have been called only once after start();
-      expect(spy).toHaveBeenCalledTimes(1);
-
-      // but widget2 getConfiguration() should have been called twice
-      expect(widget2.getConfiguration).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  describe('When adding widgets after start', () => {
-    function registerWidget(
-      widgetGetConfiguration = {},
-      dispose = sinon.spy()
-    ) {
-      const widget = {
-        getConfiguration: sinon.stub().returns(widgetGetConfiguration),
-        init: sinon.spy(),
-        render: sinon.spy(),
-        dispose,
-      };
-
-      return widget;
-    }
-
-    beforeEach(() => {
-      search = new InstantSearch({
-        appId,
-        apiKey,
-        indexName,
       });
-    });
+    })
+      .toWarnDev(`[InstantSearch.js]: The \`searchParameters\` option is deprecated and will not be supported in InstantSearch.js 4.x.
 
-    it('should add widgets after start', () => {
-      search.start();
-      expect(helperSearchSpy.callCount).toBe(1);
+You can replace it with the \`configure\` widget:
 
-      expect(search.widgets).toHaveLength(0);
-      expect(search.started).toBe(true);
+\`\`\`
+search.addWidgets([
+  configure({
+  "disjunctiveFacets": [
+    "brand"
+  ],
+  "disjunctiveFacetsRefinements": {
+    "brand": [
+      "Samsung"
+    ]
+  }
+})
+]);
+\`\`\`
 
-      const widget1 = registerWidget({ facets: ['price'] });
-      search.addWidget(widget1);
-
-      expect(helperSearchSpy.callCount).toBe(2);
-      expect(widget1.init.calledOnce).toBe(true);
-
-      const widget2 = registerWidget({ disjunctiveFacets: ['categories'] });
-      search.addWidget(widget2);
-
-      expect(widget2.init.calledOnce).toBe(true);
-      expect(helperSearchSpy.callCount).toBe(3);
-
-      expect(search.widgets).toHaveLength(2);
-      expect(search.searchParameters.facets).toEqual(['price']);
-      expect(search.searchParameters.disjunctiveFacets).toEqual(['categories']);
-    });
-
-    it('should trigger only one search using `addWidgets()`', () => {
-      search.start();
-
-      expect(helperSearchSpy.callCount).toBe(1);
-      expect(search.widgets).toHaveLength(0);
-      expect(search.started).toBe(true);
-
-      const widget1 = registerWidget({ facets: ['price'] });
-      const widget2 = registerWidget({ disjunctiveFacets: ['categories'] });
-
-      search.addWidgets([widget1, widget2]);
-
-      expect(helperSearchSpy.callCount).toBe(2);
-      expect(search.searchParameters.facets).toEqual(['price']);
-      expect(search.searchParameters.disjunctiveFacets).toEqual(['categories']);
-    });
-
-    it('should not trigger a search without widgets to add', () => {
-      search.start();
-
-      expect(helperSearchSpy.callCount).toBe(1);
-      expect(search.widgets).toHaveLength(0);
-      expect(search.started).toBe(true);
-
-      search.addWidgets([]);
-
-      expect(helperSearchSpy.callCount).toBe(1);
-      expect(search.widgets).toHaveLength(0);
-      expect(search.started).toBe(true);
-    });
+See https://www.algolia.com/doc/api-reference/widgets/configure/js/`);
   });
 
-  it('should remove all widgets without triggering a search on dispose', () => {
-    search = new InstantSearch({
-      appId,
-      apiKey,
-      indexName,
+  it('does store insightsClient on the instance', () => {
+    const insightsClient = () => {};
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      insightsClient,
     });
 
-    const widgets = times(5, () => ({
-      getConfiguration: () => ({}),
-      init: jest.fn(),
-      render: jest.fn(),
-      dispose: jest.fn(),
-    }));
+    expect(search.insightsClient).toBe(insightsClient);
+  });
 
-    search.addWidgets(widgets);
+  it("exposes helper's last results", async () => {
+    const searchClient = createSearchClient();
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(search.helper).toBe(null);
+
     search.start();
 
-    expect(search.widgets).toHaveLength(5);
-    expect(helperSearchSpy.callCount).toBe(1);
+    await runAllMicroTasks();
+
+    // could be null if we don't pretend the main helper is the one who searched
+    expect(search.helper.lastResults).not.toBe(null);
+  });
+});
+
+describe('addWidget(s)', () => {
+  beforeEach(() => {
+    warning.cache = {};
+  });
+
+  it('forwards the call of `addWidget` to the main index', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(0);
+
+    expect(() => search.addWidget(createWidget())).toWarnDev(
+      '[InstantSearch.js]: addWidget will still be supported in 4.x releases, but not further. It is replaced by `addWidgets([widget])`'
+    );
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(1);
+  });
+
+  it('forwards the call of `addWidgets` to the main index', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(0);
+
+    search.addWidgets([createWidget()]);
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(1);
+  });
+
+  it('returns the search instance when calling `addWidget`', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    let result = null;
+
+    expect(() => {
+      result = search.addWidget(createWidget());
+    }).toWarnDev(
+      '[InstantSearch.js]: addWidget will still be supported in 4.x releases, but not further. It is replaced by `addWidgets([widget])`'
+    );
+
+    expect(result).toBe(search);
+  });
+
+  it('returns the search instance when calling `addWidgets`', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(search.addWidgets([createWidget()])).toBe(search);
+  });
+});
+
+describe('removeWidget(s)', () => {
+  beforeEach(() => {
+    warning.cache = {};
+  });
+
+  it('forwards the call to `removeWidget` to the main index', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(1);
+
+    expect(() => search.removeWidget(widget)).toWarnDev(
+      '[InstantSearch.js]: removeWidget will still be supported in 4.x releases, but not further. It is replaced by `removeWidgets([widget])`'
+    );
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(0);
+  });
+
+  it('forwards the call to `removeWidgets` to the main index', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(1);
+
+    search.removeWidgets([widget]);
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(0);
+  });
+
+  it('returns the search instance when calling `removeWidget`', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    expect(() => search.addWidget(widget)).toWarnDev(
+      '[InstantSearch.js]: addWidget will still be supported in 4.x releases, but not further. It is replaced by `addWidgets([widget])`'
+    );
+
+    let result = null;
+
+    expect(() => {
+      result = search.removeWidget(widget);
+    }).toWarnDev(
+      '[InstantSearch.js]: removeWidget will still be supported in 4.x releases, but not further. It is replaced by `removeWidgets([widget])`'
+    );
+
+    expect(result).toBe(search);
+  });
+
+  it('returns the search instance when calling `removeWidgets`', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+    search.addWidgets([widget]);
+
+    expect(search.removeWidgets([widget])).toBe(search);
+  });
+});
+
+describe('start', () => {
+  it('creates two Helper one for the instance + one for the index', () => {
+    const searchClient = createSearchClient();
+    const indexName = 'indexName';
+    const search = new InstantSearch({
+      indexName,
+      searchClient,
+    });
+
+    expect(algoliasearchHelper).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    expect(algoliasearchHelper).toHaveBeenCalledTimes(2);
+    expect(algoliasearchHelper).toHaveBeenCalledWith(searchClient, indexName);
+  });
+
+  it('replaces the regular `search` with `searchOnlyWithDerivedHelpers`', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    search.start();
+
+    expect(
+      search.mainHelper.searchOnlyWithDerivedHelpers
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls the provided `searchFunction` with a single request', () => {
+    const searchFunction = jest.fn(helper => helper.setQuery('test').search());
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchFunction,
+      searchClient,
+    });
+
+    expect(searchFunction).toHaveBeenCalledTimes(0);
+    expect(searchClient.search).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    expect(searchFunction).toHaveBeenCalledTimes(1);
+    expect(searchClient.search).toHaveBeenCalledTimes(1);
+    expect(search.mainIndex.getHelper().state.query).toBe('test');
+  });
+
+  it('calls the provided `searchFunction` with multiple requests', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+      searchFunction(helper) {
+        const nextState = helper.state
+          .addDisjunctiveFacet('brand')
+          .addDisjunctiveFacetRefinement('brand', 'Apple');
+
+        helper.setState(nextState).search();
+      },
+    });
+
+    expect(() => {
+      search.start();
+    }).not.toThrow();
+  });
+
+  it('forwards the `initialUiState` to the main index', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      initialUiState: {
+        indexName: {
+          refinementList: {
+            brand: ['Apple'],
+          },
+        },
+      },
+    });
+
+    search.start();
+
+    expect(search.mainIndex.getWidgetState()).toEqual({
+      indexName: {
+        refinementList: {
+          brand: ['Apple'],
+        },
+      },
+    });
+  });
+
+  it('forwards the router state to the main index', () => {
+    const router = {
+      read: jest.fn(() => ({
+        indexName: {
+          hierarchicalMenu: {
+            'hierarchicalCategories.lvl0': ['Cell Phones'],
+          },
+        },
+      })),
+      write: jest.fn(),
+      onUpdate: jest.fn(),
+      createURL: jest.fn(() => '#'),
+    };
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      routing: {
+        router,
+      },
+    });
+
+    search.start();
+
+    expect(search.mainIndex.getWidgetState()).toEqual({
+      indexName: {
+        hierarchicalMenu: {
+          'hierarchicalCategories.lvl0': ['Cell Phones'],
+        },
+      },
+    });
+  });
+
+  it('calls `init` on the added widgets', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    expect(widget.init).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers a single search with `routing`', async () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      routing: true,
+      searchClient,
+    });
+
+    expect(searchClient.search).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    await runAllMicroTasks();
+
+    expect(searchClient.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers a search without errors', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(searchClient.search).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    expect(searchClient.search).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers a search with errors', done => {
+    const searchClient = createSearchClient({
+      search: jest.fn(() => Promise.reject(new Error('SERVER_ERROR'))),
+    });
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(searchClient.search).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    search.on('error', event => {
+      expect(searchClient.search).toHaveBeenCalledTimes(1);
+      expect(event.error).toEqual(new Error('SERVER_ERROR'));
+      done();
+    });
+  });
+
+  it('does start without widgets', () => {
+    const searchClient = createSearchClient();
+    const instance = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(() => instance.start()).not.toThrow();
+  });
+
+  it('does not to start twice', () => {
+    const searchClient = createSearchClient();
+    const instance = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    expect(() => instance.start()).not.toThrow();
+    expect(() => {
+      instance.start();
+    }).toThrowErrorMatchingInlineSnapshot(`
+"The \`start\` method has already been called once.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/instantsearch/js/"
+`);
+  });
+});
+
+describe('dispose', () => {
+  it('cancels the scheduled search', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.addWidgets([createWidget(), createWidget()]);
+
+    search.start();
+
+    await runAllMicroTasks();
+
+    // The call to `addWidgets` schedules a new search
+    search.addWidgets([createWidget()]);
 
     search.dispose();
 
-    expect(search.widgets).toHaveLength(0);
-    expect(helperSearchSpy.callCount).toBe(1);
+    // Without the cancel operation, the function call throws an error which
+    // prevents the test to complete. We can't assert that the function throws
+    // because we don't have access to the promise that throws in the first place.
+    await runAllMicroTasks();
+  });
+
+  it('cancels the scheduled render', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.addWidgets([createWidget(), createWidget()]);
+
+    search.start();
+
+    // We only wait for the search to schedule the render. We have now a render
+    // that is scheduled, it will be processed in the next microtask if not canceled.
+    await Promise.resolve();
+
+    search.dispose();
+
+    // Without the cancel operation, the function call throws an error which
+    // prevents the test to complete. We can't assert that the function throws
+    // because we don't have access to the promise that throws in the first place.
+    await runAllMicroTasks();
+  });
+
+  it('cancels the scheduled stalled render', async () => {
+    const { searches, searchClient } = createControlledSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    search.addWidgets([createWidget(), createWidget()]);
+
+    search.start();
+
+    // Resolve the `search`
+    searches[0].resolver();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    // Simulate a search
+    search.mainHelper.search();
+
+    search.dispose();
+
+    // Reaches the delay
+    jest.runOnlyPendingTimers();
+
+    // Without the cancel operation, the function call throws an error which
+    // prevents the test to complete. We can't assert that the function throws
+    // because we don't have access to the promise that throws in the first place.
+    await runAllMicroTasks();
+  });
+
+  it('removes the widgets from the main index', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.addWidgets([createWidget(), createWidget()]);
+
+    search.start();
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(2);
+
+    search.dispose();
+
+    expect(search.mainIndex.getWidgets()).toHaveLength(0);
+  });
+
+  it('calls `dispose` on the main index', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    const mainIndexDispose = jest.spyOn(search.mainIndex, 'dispose');
+
+    search.start();
+
+    expect(mainIndexDispose).toHaveBeenCalledTimes(0);
+
+    search.dispose();
+
+    expect(mainIndexDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the instance', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    expect(search.started).toBe(false);
+
+    search.start();
+
+    expect(search.started).toBe(true);
+
+    search.dispose();
+
+    expect(search.started).toBe(false);
+  });
+
+  it('removes the listeners on the main Helper', () => {
+    const onEventName = jest.fn();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.start();
+
+    const { mainHelper } = search;
+
+    mainHelper.on('eventName', onEventName);
+
+    mainHelper.emit('eventName');
+
+    expect(onEventName).toHaveBeenCalledTimes(1);
+
+    search.dispose();
+
+    mainHelper.emit('eventName');
+
+    expect(onEventName).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the listeners on the instance', async () => {
+    const onRender = jest.fn();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.on('render', onRender);
+
+    search.start();
+
+    await runAllMicroTasks();
+
+    expect(onRender).toHaveBeenCalledTimes(1);
+
+    search.dispose();
+
+    onRender.mockClear();
+
+    search.on('render', onRender);
+
+    search.start();
+
+    await runAllMicroTasks();
+
+    expect(onRender).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the Helpers references', () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.start();
+
+    expect(search.mainHelper).not.toBe(null);
+    expect(search.helper).not.toBe(null);
+
+    search.dispose();
+
+    expect(search.mainHelper).toBe(null);
+    expect(search.helper).toBe(null);
+
+    search.start();
+
+    expect(search.mainHelper).not.toBe(null);
+    expect(search.helper).not.toBe(null);
+  });
+});
+
+describe('scheduleSearch', () => {
+  it('defers the call to the `search` method', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.addWidgets([createWidget()]);
+
+    search.start();
+
+    const mainHelperSearch = jest.spyOn(search.mainHelper, 'search');
+
+    search.scheduleSearch();
+
+    expect(mainHelperSearch).toHaveBeenCalledTimes(0);
+
+    await runAllMicroTasks();
+
+    expect(mainHelperSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates the calls to the `search` method', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    search.addWidgets([createWidget()]);
+
+    search.start();
+
+    const mainHelperSearch = jest.spyOn(search.mainHelper, 'search');
+
+    search.scheduleSearch();
+    search.scheduleSearch();
+    search.scheduleSearch();
+    search.scheduleSearch();
+
+    expect(mainHelperSearch).toHaveBeenCalledTimes(0);
+
+    await runAllMicroTasks();
+
+    expect(mainHelperSearch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('scheduleRender', () => {
+  it('defers the call to the `render` method', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    expect(widget.render).toHaveBeenCalledTimes(0);
+
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates the calls to the `render` method', async () => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    expect(widget.render).toHaveBeenCalledTimes(0);
+
+    search.scheduleRender();
+    search.scheduleRender();
+    search.scheduleRender();
+    search.scheduleRender();
+
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits a `render` event once the render is complete', done => {
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    expect(widget.render).toHaveBeenCalledTimes(0);
+
+    search.on('render', () => {
+      expect(widget.render).toHaveBeenCalledTimes(1);
+      done();
+    });
+  });
+});
+
+describe('scheduleStalledRender', () => {
+  it('calls the `render` method on the main index', async () => {
+    const { searches, searchClient } = createControlledSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    // Resolve the `search`
+    searches[0].resolver();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+
+    // Trigger a new search
+    search.mainHelper.search();
+
+    // Reaches the delay
+    jest.runOnlyPendingTimers();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(2);
+  });
+
+  it('deduplicates the calls to the `render` method', async () => {
+    const { searches, searchClient } = createControlledSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    search.start();
+
+    // Resolve the `search`
+    searches[0].resolver();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+
+    // Trigger multiple searches
+    search.mainHelper.search();
+    search.mainHelper.search();
+    search.mainHelper.search();
+    search.mainHelper.search();
+
+    // Reaches the delay
+    jest.runOnlyPendingTimers();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(2);
+  });
+
+  it('triggers a `render` once the search expires the delay', async () => {
+    const { searches, searchClient } = createControlledSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    const widget = createWidget();
+
+    search.addWidgets([widget]);
+
+    expect(widget.render).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    expect(widget.render).toHaveBeenCalledTimes(0);
+
+    // Resolve the `search`
+    searches[0].resolver();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+    expect(widget.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        searchMetadata: {
+          isSearchStalled: false,
+        },
+      })
+    );
+
+    // Trigger a new search
+    search.mainHelper.search();
+
+    expect(widget.render).toHaveBeenCalledTimes(1);
+
+    // The delay is reached
+    jest.runOnlyPendingTimers();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    // Widgets render because of the stalled search
+    expect(widget.render).toHaveBeenCalledTimes(2);
+    expect(widget.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        searchMetadata: {
+          isSearchStalled: true,
+        },
+      })
+    );
+
+    // Resolve the `search`
+    searches[1].resolver();
+
+    // Wait for the `render`
+    await runAllMicroTasks();
+
+    // Widgets render because of the results
+    expect(widget.render).toHaveBeenCalledTimes(3);
+    expect(widget.render).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        searchMetadata: {
+          isSearchStalled: false,
+        },
+      })
+    );
+  });
+});
+
+describe('createURL', () => {
+  const createRouter = () => ({
+    read: jest.fn(() => ({})),
+    write: jest.fn(),
+    onUpdate: jest.fn(),
+    createURL: jest.fn(() => '#'),
+  });
+
+  it('at top-level returns the default URL for the main index state', () => {
+    const router = createRouter();
+    router.createURL.mockImplementation(() => 'https://algolia.com');
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      routing: {
+        router,
+      },
+    });
+
+    search.start();
+
+    expect(search.createURL()).toBe('https://algolia.com');
+  });
+
+  it('at top-level returns a custom URL for the main index state', () => {
+    const router = createRouter();
+    router.createURL.mockImplementation(() => 'https://algolia.com');
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      routing: {
+        router,
+      },
+    });
+
+    search.addWidgets([connectSearchBox(noop)({})]);
+    search.start();
+
+    expect(search.createURL({ indexName: { query: 'Apple' } })).toBe(
+      'https://algolia.com'
+    );
+  });
+
+  it('returns the default URL for the main index state', () => {
+    const router = createRouter();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      initialUiState: {
+        indexName: {
+          query: 'Apple',
+        },
+      },
+      routing: {
+        router,
+      },
+    });
+
+    search.addWidgets([connectSearchBox(noop)({})]);
+    search.start();
+    search.createURL();
+
+    expect(router.createURL).toHaveBeenCalledWith({
+      indexName: {
+        query: 'Apple',
+      },
+    });
+  });
+
+  it('returns the URL for nested index states', async () => {
+    const router = createRouter();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient: createSearchClient(),
+      initialUiState: {
+        indexName: {
+          query: 'Google',
+        },
+        indexNameLvl1: {
+          query: 'Samsung',
+        },
+        indexNameLvl2: {
+          query: 'Google',
+        },
+      },
+      routing: {
+        router,
+      },
+    });
+
+    search.addWidgets([
+      connectSearchBox(noop)({}),
+      index({ indexName: 'indexNameLvl1' }).addWidgets([
+        connectSearchBox(noop)({}),
+        index({ indexName: 'indexNameLvl2' }).addWidgets([
+          connectSearchBox(noop)({}),
+          connectPagination(noop)({}),
+          createWidget({
+            render({ helper, createURL }) {
+              createURL(helper.state.setPage(3).setQuery('Apple'));
+            },
+          }),
+        ]),
+      ]),
+    ]);
+
+    search.start();
+
+    // We need to run all micro tasks for the `render` method of the last
+    // widget to be called and its `createURL` to be triggered.
+    await runAllMicroTasks();
+
+    expect(router.createURL).toHaveBeenCalledWith({
+      indexName: {
+        query: 'Google',
+      },
+      indexNameLvl1: {
+        query: 'Samsung',
+      },
+      indexNameLvl2: {
+        query: 'Apple',
+        page: 4,
+      },
+    });
+  });
+});
+
+describe('refresh', () => {
+  it('calls `clearCache` on the main Helper', () => {
+    const clearCache = jest.fn();
+    const searchClient = createSearchClient({
+      clearCache,
+    });
+
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    search.start();
+
+    expect(clearCache).toHaveBeenCalledTimes(0);
+
+    search.refresh();
+
+    expect(clearCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers a `search` with the cache emptied', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+
+    search.start();
+
+    // it is called once with start
+    expect(searchClient.search).toHaveBeenCalledTimes(1);
+
+    search.refresh();
+
+    expect(searchClient.search).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('use', () => {
+  it('hooks middleware into the lifecycle before the instance starts', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+    const button = document.createElement('button');
+    const searchBox = connectSearchBox(({ refine }, isFirstRender) => {
+      if (isFirstRender) {
+        button.addEventListener('click', () => {
+          refine('Trigger search');
+        });
+      }
+    });
+    const middlewareSpy = {
+      onStateChange: jest.fn(),
+      subscribe: jest.fn(),
+      unsubscribe: jest.fn(),
+    };
+    const middleware = jest.fn(() => middlewareSpy);
+
+    search.addWidgets([searchBox({})]);
+    search.EXPERIMENTAL_use(middleware);
+
+    expect(middleware).toHaveBeenCalledTimes(1);
+    expect(middleware).toHaveBeenCalledWith({ instantSearchInstance: search });
+
+    // The subscriptions happen only once the search has started.
+    expect(middlewareSpy.subscribe).toHaveBeenCalledTimes(0);
+
+    search.start();
+
+    expect(middlewareSpy.subscribe).toHaveBeenCalledTimes(1);
+    expect(middlewareSpy.onStateChange).toHaveBeenCalledTimes(0);
+
+    button.click();
+
+    expect(middlewareSpy.onStateChange).toHaveBeenCalledTimes(1);
+    expect(middlewareSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {
+          query: 'Trigger search',
+        },
+      },
+    });
+
+    search.dispose();
+
+    expect(middlewareSpy.onStateChange).toHaveBeenCalledTimes(2);
+    expect(middlewareSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {},
+      },
+    });
+    expect(middlewareSpy.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('hooks middleware into the lifecycle after the instance starts', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+    });
+    const button = document.createElement('button');
+    const searchBox = connectSearchBox(({ refine }, isFirstRender) => {
+      if (isFirstRender) {
+        button.addEventListener('click', () => {
+          refine('Trigger search');
+        });
+      }
+    });
+    const middlewareBeforeStartSpy = {
+      onStateChange: jest.fn(),
+      subscribe: jest.fn(),
+      unsubscribe: jest.fn(),
+    };
+    const middlewareBeforeStart = jest.fn(() => middlewareBeforeStartSpy);
+    const middlewareAfterStartSpy = {
+      onStateChange: jest.fn(),
+      subscribe: jest.fn(),
+      unsubscribe: jest.fn(),
+    };
+    const middlewareAfterStart = jest.fn(() => middlewareAfterStartSpy);
+
+    search.addWidgets([searchBox({})]);
+    search.EXPERIMENTAL_use(middlewareBeforeStart);
+    search.start();
+
+    expect(middlewareBeforeStart).toHaveBeenCalledTimes(1);
+    expect(middlewareBeforeStart).toHaveBeenCalledWith({
+      instantSearchInstance: search,
+    });
+
+    search.EXPERIMENTAL_use(middlewareAfterStart);
+
+    // The first middleware should still have been only called once
+    expect(middlewareBeforeStart).toHaveBeenCalledTimes(1);
+    expect(middlewareAfterStart).toHaveBeenCalledTimes(1);
+    expect(middlewareAfterStart).toHaveBeenCalledWith({
+      instantSearchInstance: search,
+    });
+
+    // The first middleware subscribe function should have been only called once
+    expect(middlewareBeforeStartSpy.subscribe).toHaveBeenCalledTimes(1);
+    expect(middlewareAfterStartSpy.subscribe).toHaveBeenCalledTimes(1);
+    expect(middlewareBeforeStartSpy.onStateChange).toHaveBeenCalledTimes(0);
+    expect(middlewareAfterStartSpy.onStateChange).toHaveBeenCalledTimes(0);
+
+    button.click();
+
+    expect(middlewareBeforeStartSpy.onStateChange).toHaveBeenCalledTimes(1);
+    expect(middlewareAfterStartSpy.onStateChange).toHaveBeenCalledTimes(1);
+    expect(middlewareBeforeStartSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {
+          query: 'Trigger search',
+        },
+      },
+    });
+    expect(middlewareAfterStartSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {
+          query: 'Trigger search',
+        },
+      },
+    });
+
+    search.dispose();
+
+    expect(middlewareBeforeStartSpy.onStateChange).toHaveBeenCalledTimes(2);
+    expect(middlewareAfterStartSpy.onStateChange).toHaveBeenCalledTimes(2);
+    expect(middlewareBeforeStartSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {},
+      },
+    });
+    expect(middlewareAfterStartSpy.onStateChange).toHaveBeenCalledWith({
+      state: {
+        indexName: {},
+      },
+    });
+    expect(middlewareBeforeStartSpy.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(middlewareAfterStartSpy.unsubscribe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('UI state', () => {
+  it('warns if UI state contains unmounted widgets in development mode', () => {
+    const searchClient = createSearchClient();
+    const search = new InstantSearch({
+      indexName: 'indexName',
+      searchClient,
+      initialUiState: {
+        indexName: {
+          query: 'First query',
+          page: 3,
+          refinementList: {
+            brand: ['Apple'],
+          },
+          hierarchicalMenu: {
+            categories: 'Mobile',
+          },
+          range: {
+            price: '100:200',
+          },
+          menu: {
+            category: 'Hardware',
+          },
+          places: {
+            query: 'Paris',
+            location: ['1', '1'],
+          },
+          // This is a UI parameter that is not supported by default but that
+          // can be added when using custom widgets. Having it in `initialUiState`
+          // makes sure that it doesn't throw if it happens.
+          customWidget: {
+            query: 'Custom query',
+          },
+        },
+      },
+    });
+
+    const searchBox = connectSearchBox(() => null)({});
+    const customWidget = { render() {} };
+
+    search.addWidgets([searchBox, customWidget]);
+
+    expect(() => {
+      search.start();
+    })
+      .toWarnDev(`[InstantSearch.js]: The UI state for the index "indexName" is not consistent with the widgets mounted.
+
+This can happen when the UI state is specified via \`initialUiState\` or \`routing\` but that the widgets responsible for this state were not added. This results in those query parameters not being sent to the API.
+
+To fully reflect the state, some widgets need to be added to the index "indexName":
+
+- \`page\` needs one of these widgets: "pagination", "infiniteHits"
+- \`refinementList\` needs one of these widgets: "refinementList"
+- \`hierarchicalMenu\` needs one of these widgets: "hierarchicalMenu"
+- \`range\` needs one of these widgets: "rangeInput", "rangeSlider"
+- \`menu\` needs one of these widgets: "menu", "menuSelect"
+- \`places\` needs one of these widgets: "places"
+
+If you do not wish to display widgets but still want to support their search parameters, you can mount "virtual widgets" that don't render anything:
+
+\`\`\`
+const virtualPagination = connectPagination(() => null);
+const virtualRefinementList = connectRefinementList(() => null);
+const virtualHierarchicalMenu = connectHierarchicalMenu(() => null);
+const virtualRangeInput = connectRange(() => null);
+const virtualMenu = connectMenu(() => null);
+
+search.addWidgets([
+  virtualPagination({ /* ... */ }),
+  virtualRefinementList({ /* ... */ }),
+  virtualHierarchicalMenu({ /* ... */ }),
+  virtualRangeInput({ /* ... */ }),
+  virtualMenu({ /* ... */ })
+]);
+\`\`\`
+
+If you're using custom widgets that do set these query parameters, we recommend using connectors instead.
+
+See https://www.algolia.com/doc/guides/building-search-ui/widgets/customize-an-existing-widget/js/#customize-the-complete-ui-of-the-widgets`);
   });
 });

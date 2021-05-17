@@ -1,31 +1,49 @@
-import AlgoliasearchHelper from 'algoliasearch-helper';
+import { render } from 'preact';
+import AlgoliasearchHelper, { SearchParameters } from 'algoliasearch-helper';
+import rangeSlider from '../range-slider';
 
-import rangeSlider from '../range-slider.js';
+jest.mock('preact', () => {
+  const module = require.requireActual('preact');
+
+  module.render = jest.fn();
+
+  return module;
+});
 
 const instantSearchInstance = { templatesConfig: undefined };
 
 describe('rangeSlider', () => {
-  it('throws an exception when no container', () => {
-    const attributeName = '';
-    expect(() => rangeSlider({ attributeName })).toThrow(/^Usage:/);
+  describe('Usage', () => {
+    it('throws without container', () => {
+      expect(() => rangeSlider({ container: undefined }))
+        .toThrowErrorMatchingInlineSnapshot(`
+"The \`container\` option is required.
+
+See documentation: https://www.algolia.com/doc/api-reference/widgets/range-slider/js/"
+`);
+    });
+
+    it('is a widget', () => {
+      const container = document.createElement('div');
+      const widget = rangeSlider({ container, attribute: 'price' });
+
+      expect(widget).toEqual(
+        expect.objectContaining({
+          $$type: 'ais.rangeSlider',
+        })
+      );
+    });
   });
 
-  it('throws an exception when no attributeName', () => {
-    const container = document.createElement('div');
-    expect(() => rangeSlider({ container })).toThrow(/^Usage:/);
-  });
+  describe('Lifecycle', () => {
+    const attribute = 'aNumAttr';
 
-  describe('widget usage', () => {
-    const attributeName = 'aNumAttr';
-
-    let ReactDOM;
     let container;
     let helper;
     let widget;
 
     beforeEach(() => {
-      ReactDOM = { render: jest.fn() };
-      rangeSlider.__Rewire__('render', ReactDOM.render);
+      render.mockClear();
 
       container = document.createElement('div');
       helper = new AlgoliasearchHelper(
@@ -39,128 +57,101 @@ describe('rangeSlider', () => {
       );
     });
 
-    afterEach(() => {
-      rangeSlider.__ResetDependency__('render');
-      rangeSlider.__ResetDependency__('autoHideContainerHOC');
-      rangeSlider.__ResetDependency__('headerFooterHOC');
-    });
-
     it('should render without results', () => {
       widget = rangeSlider({
         container,
-        attributeName,
+        attribute,
         cssClasses: { root: ['root', 'cx'] },
+        step: 1,
       });
 
       widget.init({ helper, instantSearchInstance });
       widget.render({ results: [], helper });
 
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
+      const [firstRender] = render.mock.calls;
 
-    it('should `shouldAutoHideContainer` when range min === max', () => {
-      const results = {
-        disjunctiveFacets: [
-          {
-            name: attributeName,
-            stats: {
-              min: 65,
-              max: 65,
-            },
-          },
-        ],
-      };
-
-      widget = rangeSlider({
-        container,
-        attributeName,
-        cssClasses: { root: ['root', 'cx'] },
-      });
-
-      widget.init({ helper, instantSearchInstance });
-      widget.render({ results, helper });
-
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(
-        ReactDOM.render.mock.calls[0][0].props.shouldAutoHideContainer
-      ).toEqual(true);
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-    });
-
-    it('should `collapse` when options is provided', () => {
-      const results = {};
-
-      widget = rangeSlider({
-        container,
-        attributeName,
-        collapsible: {
-          collapsed: true,
-        },
-      });
-
-      widget.init({ helper, instantSearchInstance });
-      widget.render({ results, helper });
-
-      expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-      expect(
-        ReactDOM.render.mock.calls[0][0].props.shouldAutoHideContainer
-      ).toEqual(true);
-      expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(firstRender[0].props).toMatchSnapshot();
     });
 
     describe('min option', () => {
       it('refines when no previous configuration', () => {
-        widget = rangeSlider({ container, attributeName, min: 100 });
-        expect(widget.getConfiguration()).toEqual({
-          disjunctiveFacets: [attributeName],
-          numericRefinements: { [attributeName]: { '>=': [100] } },
-        });
-      });
-
-      it('does not refine when previous configuration', () => {
         widget = rangeSlider({
           container,
-          attributeName: 'aNumAttr',
+          attribute,
           min: 100,
+          step: 1,
+          cssClasses: { root: '' },
         });
+
         expect(
-          widget.getConfiguration({
-            numericRefinements: { [attributeName]: {} },
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
           })
-        ).toEqual({
-          disjunctiveFacets: [attributeName],
-        });
+        ).toEqual(
+          new SearchParameters({
+            disjunctiveFacets: [attribute],
+            numericRefinements: { [attribute]: { '>=': [100] } },
+          })
+        );
       });
 
       it('works along with max option', () => {
-        widget = rangeSlider({ container, attributeName, min: 100, max: 200 });
-        expect(widget.getConfiguration()).toEqual({
-          disjunctiveFacets: [attributeName],
-          numericRefinements: {
-            [attributeName]: {
-              '>=': [100],
-              '<=': [200],
-            },
-          },
+        widget = rangeSlider({
+          container,
+          attribute,
+          min: 100,
+          max: 200,
+          step: 1,
+          cssClasses: { root: '' },
         });
+
+        expect(
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
+          })
+        ).toEqual(
+          new SearchParameters({
+            disjunctiveFacets: [attribute],
+            numericRefinements: {
+              [attribute]: {
+                '>=': [100],
+                '<=': [200],
+              },
+            },
+          })
+        );
       });
 
       it('sets the right range', () => {
-        widget = rangeSlider({ container, attributeName, min: 100, max: 200 });
-        helper.setState(widget.getConfiguration());
+        widget = rangeSlider({
+          container,
+          attribute,
+          min: 100,
+          max: 200,
+          step: 1,
+          cssClasses: { root: '' },
+        });
+
+        helper.setState(
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
+          })
+        );
         widget.init({ helper, instantSearchInstance });
         widget.render({ results: {}, helper });
 
-        expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-        expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+        const [firstRender] = render.mock.calls;
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(firstRender[0].props).toMatchSnapshot();
       });
 
       it('will use the results max when only min passed', () => {
         const results = {
           disjunctiveFacets: [
             {
-              name: attributeName,
+              name: attribute,
               stats: {
                 min: 1.99,
                 max: 4999.98,
@@ -168,43 +159,57 @@ describe('rangeSlider', () => {
             },
           ],
         };
+        widget = rangeSlider({
+          container,
+          attribute,
+          min: 100,
+          step: 1,
+          cssClasses: { root: '' },
+        });
 
-        widget = rangeSlider({ container, attributeName, min: 100 });
-        helper.setState(widget.getConfiguration());
+        helper.setState(
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
+          })
+        );
         widget.init({ helper, instantSearchInstance });
         widget.render({ results, helper });
 
-        expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-        expect(ReactDOM.render.mock.calls[0][0].props.max).toEqual(5000);
-        expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+        const [firstRender] = render.mock.calls;
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(firstRender[0].props.max).toEqual(5000);
+        expect(firstRender[0].props).toMatchSnapshot();
       });
     });
 
     describe('max option', () => {
       it('refines when no previous configuration', () => {
-        widget = rangeSlider({ container, attributeName, max: 100 });
-        expect(widget.getConfiguration()).toEqual({
-          disjunctiveFacets: [attributeName],
-          numericRefinements: { [attributeName]: { '<=': [100] } },
+        widget = rangeSlider({
+          container,
+          attribute,
+          max: 100,
+          step: 1,
+          cssClasses: { root: '' },
         });
-      });
 
-      it('does not refine when previous configuration', () => {
-        widget = rangeSlider({ container, attributeName, max: 100 });
         expect(
-          widget.getConfiguration({
-            numericRefinements: { [attributeName]: {} },
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
           })
-        ).toEqual({
-          disjunctiveFacets: [attributeName],
-        });
+        ).toEqual(
+          new SearchParameters({
+            disjunctiveFacets: [attribute],
+            numericRefinements: { [attribute]: { '<=': [100] } },
+          })
+        );
       });
 
       it('will use the results min when only max is passed', () => {
         const results = {
           disjunctiveFacets: [
             {
-              name: attributeName,
+              name: attribute,
               stats: {
                 min: 1.99,
                 max: 4999.98,
@@ -213,14 +218,26 @@ describe('rangeSlider', () => {
           ],
         };
 
-        widget = rangeSlider({ container, attributeName, max: 100 });
-        helper.setState(widget.getConfiguration());
+        widget = rangeSlider({
+          container,
+          attribute,
+          max: 100,
+          step: 1,
+          cssClasses: { root: '' },
+        });
+        helper.setState(
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
+          })
+        );
         widget.init({ helper, instantSearchInstance });
         widget.render({ results, helper });
 
-        expect(ReactDOM.render).toHaveBeenCalledTimes(1);
-        expect(ReactDOM.render.mock.calls[0][0].props.min).toEqual(1);
-        expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
+        const [firstRender] = render.mock.calls;
+
+        expect(render).toHaveBeenCalledTimes(1);
+        expect(firstRender[0].props.min).toEqual(1);
+        expect(firstRender[0].props).toMatchSnapshot();
       });
     });
 
@@ -228,13 +245,18 @@ describe('rangeSlider', () => {
       let results;
 
       beforeEach(() => {
-        widget = rangeSlider({ container, attributeName });
+        widget = rangeSlider({
+          container,
+          attribute,
+          step: 1,
+          cssClasses: { root: '' },
+        });
         widget.init({ helper, instantSearchInstance });
 
         results = {
           disjunctiveFacets: [
             {
-              name: attributeName,
+              name: attribute,
               stats: {
                 min: 1.99,
                 max: 4999.98,
@@ -247,18 +269,30 @@ describe('rangeSlider', () => {
       });
 
       it('configures the disjunctiveFacets', () => {
-        expect(widget.getConfiguration()).toEqual({
-          disjunctiveFacets: [attributeName],
-        });
+        expect(
+          widget.getWidgetSearchParameters(new SearchParameters(), {
+            uiState: {},
+          })
+        ).toEqual(
+          new SearchParameters({
+            disjunctiveFacets: ['aNumAttr'],
+            // @TODO: gWSP does not yet take min & max in account (so is this correct?)
+            numericRefinements: {
+              aNumAttr: {},
+            },
+          })
+        );
       });
 
-      it('calls twice ReactDOM.render', () => {
+      it('calls twice render', () => {
         widget.render({ results, helper });
         widget.render({ results, helper });
 
-        expect(ReactDOM.render).toHaveBeenCalledTimes(2);
-        expect(ReactDOM.render.mock.calls[0][0]).toMatchSnapshot();
-        expect(ReactDOM.render.mock.calls[1][0]).toMatchSnapshot();
+        const [firstRender, secondRender] = render.mock.calls;
+
+        expect(render).toHaveBeenCalledTimes(2);
+        expect(firstRender[0].props).toMatchSnapshot();
+        expect(secondRender[0].props).toMatchSnapshot();
       });
 
       it('does not call the refinement functions if not refined', () => {
@@ -279,9 +313,7 @@ describe('rangeSlider', () => {
         const state1 = helper.state;
 
         expect(helper.search).toHaveBeenCalledTimes(1);
-        expect(state1).toEqual(
-          state0.addNumericRefinement(attributeName, '>=', 3)
-        );
+        expect(state1).toEqual(state0.addNumericRefinement(attribute, '>=', 3));
       });
 
       it('calls the refinement function if refined with max-1', () => {
@@ -294,7 +326,7 @@ describe('rangeSlider', () => {
 
         expect(helper.search).toHaveBeenCalledTimes(1);
         expect(state1).toEqual(
-          state0.addNumericRefinement(attributeName, '<=', 4999)
+          state0.addNumericRefinement(attribute, '<=', 4999)
         );
       });
 
@@ -309,41 +341,49 @@ describe('rangeSlider', () => {
         expect(helper.search).toHaveBeenCalledTimes(1);
         expect(state1).toEqual(
           state0
-            .addNumericRefinement(attributeName, '>=', 3)
-            .addNumericRefinement(attributeName, '<=', 4999)
+            .addNumericRefinement(attribute, '>=', 3)
+            .addNumericRefinement(attribute, '<=', 4999)
         );
       });
 
       it("expect to clamp the min value to the max range when it's greater than range", () => {
         widget = rangeSlider({
           container,
-          attributeName,
+          attribute,
+          step: 1,
+          cssClasses: { root: '' },
         });
 
         widget.init({ helper, instantSearchInstance });
 
-        helper.addNumericRefinement(attributeName, '>=', 5550);
-        helper.addNumericRefinement(attributeName, '<=', 6000);
+        helper.addNumericRefinement(attribute, '>=', 5550);
+        helper.addNumericRefinement(attribute, '<=', 6000);
 
         widget.render({ results, helper });
 
-        expect(ReactDOM.render.mock.calls[0][0].props.values[0]).toBe(5000);
+        const [firstRender] = render.mock.calls;
+
+        expect(firstRender[0].props.values[0]).toBe(5000);
       });
 
       it("expect to clamp the max value to the min range when it's lower than range", () => {
         widget = rangeSlider({
           container,
-          attributeName,
+          attribute,
+          step: 1,
+          cssClasses: { root: '' },
         });
 
         widget.init({ helper, instantSearchInstance });
 
-        helper.addNumericRefinement(attributeName, '>=', -50);
-        helper.addNumericRefinement(attributeName, '<=', 0);
+        helper.addNumericRefinement(attribute, '>=', -50);
+        helper.addNumericRefinement(attribute, '<=', 0);
 
         widget.render({ results, helper });
 
-        expect(ReactDOM.render.mock.calls[0][0].props.values[1]).toBe(1);
+        const [firstRender] = render.mock.calls;
+
+        expect(firstRender[0].props.values[1]).toBe(1);
       });
     });
   });

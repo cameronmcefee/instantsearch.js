@@ -1,32 +1,38 @@
-import React from 'react';
-import { shallow } from 'enzyme';
-import { RawRangeInput } from '../RangeInput';
+/** @jsx h */
 
-describe('RawRangeInput', () => {
+import { h } from 'preact';
+import { shallow } from 'enzyme';
+import { render, fireEvent } from '@testing-library/preact';
+import RangeInput from '../RangeInput';
+
+describe('RangeInput', () => {
   const defaultProps = {
     min: 0,
     max: 500,
     step: 1,
     values: {},
     cssClasses: {
+      root: 'root',
+      noRefinement: 'noRefinement',
       form: 'form',
-      fieldset: 'fieldset',
-      labelMin: 'labelMin',
+      label: 'label',
+      input: 'input',
       inputMin: 'inputMin',
-      separator: 'separator',
-      labelMax: 'labelMax',
       inputMax: 'inputMax',
+      separator: 'separator',
       submit: 'submit',
     },
-    labels: {
-      separator: 'to',
-      submit: 'Go',
+    templateProps: {
+      templates: {
+        separatorText: 'to',
+        submitText: 'Go',
+      },
     },
     refine: () => {},
   };
 
   const shallowRender = props =>
-    shallow(<RawRangeInput {...defaultProps} {...props} />);
+    shallow(<RangeInput {...defaultProps} {...props} />);
 
   it('expect to render', () => {
     const props = {};
@@ -77,7 +83,7 @@ describe('RawRangeInput', () => {
 
       expect(component).toMatchSnapshot();
 
-      component.instance().componentWillReceiveProps(nextProps);
+      component.setProps(nextProps);
 
       expect(component).toMatchSnapshot();
       expect(component.state()).toEqual({
@@ -105,7 +111,7 @@ describe('RawRangeInput', () => {
 
       expect(component).toMatchSnapshot();
 
-      component.instance().componentWillReceiveProps(nextProps);
+      component.setProps(nextProps);
 
       expect(component).toMatchSnapshot();
       expect(component.state()).toEqual({
@@ -118,40 +124,22 @@ describe('RawRangeInput', () => {
   describe('onChange', () => {
     it('expect to update the state when min change', () => {
       const props = {};
-      const component = shallowRender(props);
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [minInput] = container.querySelectorAll('input[type="number"]');
 
-      component
-        .find('input[type="number"]')
-        .first()
-        .simulate('change', {
-          currentTarget: {
-            value: 20,
-          },
-        });
+      fireEvent.input(minInput, { target: { value: 20 } });
 
-      expect(component).toMatchSnapshot();
-      expect(component.state()).toEqual({
-        min: 20,
-      });
+      expect(minInput.value).toEqual('20');
     });
 
     it('expect to update the state when max change', () => {
       const props = {};
-      const component = shallowRender(props);
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [, maxInput] = container.querySelectorAll('input[type="number"]');
 
-      component
-        .find('input[type="number"]')
-        .last()
-        .simulate('change', {
-          currentTarget: {
-            value: 480,
-          },
-        });
+      fireEvent.input(maxInput, { target: { value: 480 } });
 
-      expect(component).toMatchSnapshot();
-      expect(component.state()).toEqual({
-        max: 480,
-      });
+      expect(maxInput.value).toEqual('480');
     });
   });
 
@@ -161,33 +149,20 @@ describe('RawRangeInput', () => {
         refine: jest.fn(),
       };
 
-      const event = {
-        preventDefault: jest.fn(),
-      };
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [minInput, maxInput] = container.querySelectorAll(
+        'input[type="number"]'
+      );
 
-      const component = shallowRender(props);
+      fireEvent.input(minInput, {
+        target: { value: 20 },
+      });
+      fireEvent.input(maxInput, {
+        target: { value: 480 },
+      });
 
-      component
-        .find('input[type="number"]')
-        .first()
-        .simulate('change', {
-          currentTarget: {
-            value: 20,
-          },
-        });
+      fireEvent.submit(container.querySelector('form'));
 
-      component
-        .find('input[type="number"]')
-        .last()
-        .simulate('change', {
-          currentTarget: {
-            value: 480,
-          },
-        });
-
-      component.find('form').simulate('submit', event);
-
-      expect(event.preventDefault).toHaveBeenCalled();
       expect(props.refine).toHaveBeenCalledWith([20, 480]);
     });
 
@@ -196,33 +171,20 @@ describe('RawRangeInput', () => {
         refine: jest.fn(),
       };
 
-      const event = {
-        preventDefault: jest.fn(),
-      };
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [minInput, maxInput] = container.querySelectorAll(
+        'input[type="number"]'
+      );
 
-      const component = shallowRender(props);
+      fireEvent.input(minInput, {
+        target: { value: 20.05 },
+      });
+      fireEvent.input(maxInput, {
+        target: { value: 480.05 },
+      });
 
-      component
-        .find('input[type="number"]')
-        .first()
-        .simulate('change', {
-          currentTarget: {
-            value: 20.05,
-          },
-        });
+      fireEvent.submit(container.querySelector('form'));
 
-      component
-        .find('input[type="number"]')
-        .last()
-        .simulate('change', {
-          currentTarget: {
-            value: 480.05,
-          },
-        });
-
-      component.find('form').simulate('submit', event);
-
-      expect(event.preventDefault).toHaveBeenCalled();
       expect(props.refine).toHaveBeenCalledWith([20.05, 480.05]);
     });
 
@@ -231,24 +193,15 @@ describe('RawRangeInput', () => {
         refine: jest.fn(),
       };
 
-      const event = {
-        preventDefault: jest.fn(),
-      };
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [minInput] = container.querySelectorAll('input[type="number"]');
 
-      const component = shallowRender(props);
+      fireEvent.input(minInput, {
+        target: { value: 20 },
+      });
 
-      component
-        .find('input[type="number"]')
-        .first()
-        .simulate('change', {
-          currentTarget: {
-            value: 20,
-          },
-        });
+      fireEvent.submit(container.querySelector('form'));
 
-      component.find('form').simulate('submit', event);
-
-      expect(event.preventDefault).toHaveBeenCalled();
       expect(props.refine).toHaveBeenCalledWith([20, undefined]);
     });
 
@@ -257,24 +210,15 @@ describe('RawRangeInput', () => {
         refine: jest.fn(),
       };
 
-      const event = {
-        preventDefault: jest.fn(),
-      };
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      const [, maxInput] = container.querySelectorAll('input[type="number"]');
 
-      const component = shallowRender(props);
+      fireEvent.input(maxInput, {
+        target: { value: 480 },
+      });
 
-      component
-        .find('input[type="number"]')
-        .last()
-        .simulate('change', {
-          currentTarget: {
-            value: 480,
-          },
-        });
+      fireEvent.submit(container.querySelector('form'));
 
-      component.find('form').simulate('submit', event);
-
-      expect(event.preventDefault).toHaveBeenCalled();
       expect(props.refine).toHaveBeenCalledWith([undefined, 480]);
     });
 
@@ -283,15 +227,9 @@ describe('RawRangeInput', () => {
         refine: jest.fn(),
       };
 
-      const event = {
-        preventDefault: jest.fn(),
-      };
+      const { container } = render(<RangeInput {...defaultProps} {...props} />);
+      fireEvent.submit(container.querySelector('form'));
 
-      const component = shallowRender(props);
-
-      component.find('form').simulate('submit', event);
-
-      expect(event.preventDefault).toHaveBeenCalled();
       expect(props.refine).toHaveBeenCalledWith([undefined, undefined]);
     });
   });

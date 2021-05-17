@@ -1,30 +1,19 @@
-import find from 'lodash/find';
-import isEqual from 'lodash/isEqual';
-import { checkRendering } from '../../lib/utils.js';
+import {
+  checkRendering,
+  warning,
+  createDocumentationMessageGenerator,
+  isEqual,
+  noop,
+} from '../../lib/utils';
 
-const usage = `Usage:
-var customBreadcrumb = connectBreadcrumb(function renderFn(params, isFirstRendering) {
-  // params = {
-  //   createURL,
-  //   items,
-  //   refine,
-  //   instantSearchInstance,
-  //   widgetParams,
-  // }
+const withUsage = createDocumentationMessageGenerator({
+  name: 'breadcrumb',
+  connector: true,
 });
-search.addWidget(
-  customBreadcrumb({
-    attributes,
-    [ rootPath = null ],
-    [ transformItems ]
-  })
-);
-Full documentation available at https://community.algolia.com/instantsearch.js/v2/connectors/connectBreadcrumb.html
-`;
 
 /**
  * @typedef {Object} BreadcrumbItem
- * @property {string} name Name of the category or subcategory.
+ * @property {string} label Label of the category or subcategory.
  * @property {string} value Value of breadcrumb item.
  */
 
@@ -55,8 +44,8 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
  * @param {function} unmountFn Unmount function called when the widget is disposed.
  * @return {function(CustomBreadcrumbWidgetOptions)} Re-usable widget factory for a custom **Breadcrumb** widget.
  */
-export default function connectBreadcrumb(renderFn, unmountFn) {
-  checkRendering(renderFn, usage);
+export default function connectBreadcrumb(renderFn, unmountFn = noop) {
+  checkRendering(renderFn, withUsage());
   return (widgetParams = {}) => {
     const {
       attributes,
@@ -64,44 +53,17 @@ export default function connectBreadcrumb(renderFn, unmountFn) {
       rootPath = null,
       transformItems = items => items,
     } = widgetParams;
-    const [hierarchicalFacetName] = attributes;
 
     if (!attributes || !Array.isArray(attributes) || attributes.length === 0) {
-      throw new Error(usage);
+      throw new Error(
+        withUsage('The `attributes` option expects an array of strings.')
+      );
     }
 
-    return {
-      getConfiguration: currentConfiguration => {
-        if (currentConfiguration.hierarchicalFacets) {
-          const isFacetSet = find(
-            currentConfiguration.hierarchicalFacets,
-            ({ name }) => name === hierarchicalFacetName
-          );
-          if (isFacetSet) {
-            if (
-              !isEqual(isFacetSet.attributes, attributes) ||
-              isFacetSet.separator !== separator
-            ) {
-              // eslint-disable-next-line no-console
-              console.warn(
-                'Using Breadcrumb & HierarchicalMenu on the same facet with different options. Adding that one will override the configuration of the HierarchicalMenu. Check your options.'
-              );
-            }
-            return {};
-          }
-        }
+    const [hierarchicalFacetName] = attributes;
 
-        return {
-          hierarchicalFacets: [
-            {
-              attributes,
-              name: hierarchicalFacetName,
-              separator,
-              rootPath,
-            },
-          ],
-        };
-      },
+    return {
+      $$type: 'ais.breadcrumb',
 
       init({ createURL, helper, instantSearchInstance }) {
         this._createURL = facetValue => {
@@ -174,6 +136,30 @@ export default function connectBreadcrumb(renderFn, unmountFn) {
       dispose() {
         unmountFn();
       },
+
+      getWidgetSearchParameters(searchParameters) {
+        if (searchParameters.isHierarchicalFacet(hierarchicalFacetName)) {
+          const facet = searchParameters.getHierarchicalFacetByName(
+            hierarchicalFacetName
+          );
+
+          warning(
+            isEqual(facet.attributes, attributes) &&
+              facet.separator === separator &&
+              facet.rootPath === rootPath,
+            'Using Breadcrumb and HierarchicalMenu on the same facet with different options overrides the configuration of the HierarchicalMenu.'
+          );
+
+          return searchParameters;
+        }
+
+        return searchParameters.addHierarchicalFacet({
+          name: hierarchicalFacetName,
+          attributes,
+          separator,
+          rootPath,
+        });
+      },
     };
   };
 }
@@ -182,7 +168,7 @@ function prepareItems(data) {
   return data.reduce((result, currentItem) => {
     if (currentItem.isRefined) {
       result.push({
-        name: currentItem.name,
+        label: currentItem.name,
         value: currentItem.path,
       });
       if (Array.isArray(currentItem.data)) {
@@ -195,7 +181,7 @@ function prepareItems(data) {
 
 function shiftItemsValues(array) {
   return array.map((x, idx) => ({
-    name: x.name,
+    label: x.label,
     value: idx + 1 === array.length ? null : array[idx + 1].value,
   }));
 }

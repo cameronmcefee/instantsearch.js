@@ -1,56 +1,52 @@
+/** @jsx h */
+
+import { h } from 'preact';
 import PropTypes from 'prop-types';
-import React, { Component } from 'preact-compat';
 
-import isEqual from 'lodash/isEqual';
-
-class PaginationLink extends Component {
-  componentWillMount() {
-    this.handleClick = this.handleClick.bind(this);
+function PaginationLink({
+  cssClasses,
+  label,
+  ariaLabel,
+  url,
+  isDisabled,
+  handleClick,
+  pageNumber,
+}) {
+  if (isDisabled) {
+    return (
+      <li className={cssClasses.item}>
+        <span
+          className={cssClasses.link}
+          dangerouslySetInnerHTML={{
+            __html: label,
+          }}
+        />
+      </li>
+    );
   }
 
-  shouldComponentUpdate(nextProps) {
-    return !isEqual(this.props, nextProps);
-  }
-
-  handleClick(e) {
-    this.props.handleClick(this.props.pageNumber, e);
-  }
-
-  render() {
-    const { cssClasses, label, ariaLabel, url, isDisabled } = this.props;
-
-    let tagName = 'span';
-    let attributes = {
-      className: cssClasses.link,
-      dangerouslySetInnerHTML: {
-        __html: label,
-      },
-    };
-
-    // "Enable" the element, by making it a link
-    if (!isDisabled) {
-      tagName = 'a';
-      attributes = {
-        ...attributes,
-        'aria-label': ariaLabel,
-        href: url,
-        onClick: this.handleClick,
-      };
-    }
-
-    const element = React.createElement(tagName, attributes);
-
-    return <li className={cssClasses.item}>{element}</li>;
-  }
+  return (
+    <li className={cssClasses.item}>
+      <a
+        className={cssClasses.link}
+        aria-label={ariaLabel}
+        href={url}
+        onClick={event => handleClick(pageNumber, event)}
+        dangerouslySetInnerHTML={{
+          __html: label,
+        }}
+      />
+    </li>
+  );
 }
 
 PaginationLink.propTypes = {
   ariaLabel: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
     .isRequired,
   cssClasses: PropTypes.shape({
-    item: PropTypes.string,
-    link: PropTypes.string,
-  }),
+    item: PropTypes.string.isRequired,
+    link: PropTypes.string.isRequired,
+  }).isRequired,
   handleClick: PropTypes.func.isRequired,
   isDisabled: PropTypes.bool,
   label: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,

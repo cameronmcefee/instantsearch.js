@@ -1,12 +1,12 @@
-import React from 'react';
-import { shallow } from 'enzyme';
-import { createRenderer } from 'react-test-renderer/shallow';
+/** @jsx h */
 
-import Slider, { RawSlider } from '../Slider';
+import { h } from 'preact';
+import { shallow } from 'enzyme';
+import Slider from '../Slider';
 
 describe('Slider', () => {
   it('expect to render correctly', () => {
-    const tree = createRenderer().render(
+    const tree = shallow(
       <Slider
         refine={() => undefined}
         min={0}
@@ -15,31 +15,18 @@ describe('Slider', () => {
         pips={true}
         step={2}
         tooltips={true}
-        shouldAutoHideContainer={false}
+        cssClasses={{
+          root: 'root',
+          disabledRoot: 'disabledRoot',
+        }}
       />
     );
-    expect(tree).toMatchSnapshot();
-  });
 
-  it('expect to render collapsed', () => {
-    const tree = createRenderer().render(
-      <Slider
-        refine={() => undefined}
-        min={0}
-        max={500}
-        values={[0, 0]}
-        pips={true}
-        step={2}
-        tooltips={true}
-        collapsible={{ collapsed: true }}
-        shouldAutoHideContainer={false}
-      />
-    );
     expect(tree).toMatchSnapshot();
   });
 
   it('expect to render without pips', () => {
-    const tree = createRenderer().render(
+    const tree = shallow(
       <Slider
         refine={() => undefined}
         min={0}
@@ -48,9 +35,33 @@ describe('Slider', () => {
         pips={false}
         step={2}
         tooltips={true}
-        shouldAutoHideContainer={false}
+        cssClasses={{
+          root: 'root',
+          disabledRoot: 'disabledRoot',
+        }}
       />
     );
+
+    expect(tree).toMatchSnapshot();
+  });
+
+  it('expect to render with CSS classes', () => {
+    const tree = shallow(
+      <Slider
+        refine={() => undefined}
+        min={0}
+        max={500}
+        values={[0, 0]}
+        pips={false}
+        step={2}
+        tooltips={true}
+        cssClasses={{
+          root: 'root',
+          disabledRoot: 'disabledRoot',
+        }}
+      />
+    );
+
     expect(tree).toMatchSnapshot();
   });
 
@@ -63,15 +74,17 @@ describe('Slider', () => {
       pips: true,
       step: 2,
       tooltips: true,
-      shouldAutoHideContainer: false,
+      cssClasses: {
+        root: 'root',
+        disabledRoot: 'disabledRoot',
+      },
     };
 
-    shallow(<RawSlider {...props} />)
-      .find('Rheostat')
-      .simulate('change', {
-        values: [0, 100],
-      });
+    const Rheostat = shallow(<Slider {...props} />).find('Rheostat');
 
+    Rheostat.props().onChange({ values: [0, 100] });
+
+    expect(props.refine).toHaveBeenCalledTimes(1);
     expect(props.refine).toHaveBeenCalledWith([0, 100]);
   });
 });

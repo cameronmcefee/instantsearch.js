@@ -1,23 +1,16 @@
-import escapeHits, { tagConfig } from '../../lib/escape-highlight.js';
-import { checkRendering } from '../../lib/utils.js';
+import escapeHits, { TAG_PLACEHOLDER } from '../../lib/escape-highlight';
+import {
+  checkRendering,
+  createDocumentationMessageGenerator,
+  addAbsolutePosition,
+  addQueryID,
+  noop,
+} from '../../lib/utils';
 
-const usage = `Usage:
-var customHits = connectHits(function render(params, isFirstRendering) {
-  // params = {
-  //   hits,
-  //   results,
-  //   instantSearchInstance,
-  //   widgetParams,
-  // }
+const withUsage = createDocumentationMessageGenerator({
+  name: 'hits',
+  connector: true,
 });
-search.addWidget(
-  customHits({
-    [ escapeHits = false ],
-    [ transformItems ]
-  })
-);
-Full documentation available at https://community.algolia.com/instantsearch.js/v2/connectors/connectHits.html
-`;
 
 /**
  * @typedef {Object} HitsRenderingOptions
@@ -28,7 +21,7 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
 
 /**
  * @typedef {Object} CustomHitsWidgetOptions
- * @property {boolean} [escapeHits = false] If true, escape HTML tags from `hits[i]._highlightResult`.
+ * @property {boolean} [escapeHTML = true] Whether to escape HTML tags from `hits[i]._highlightResult`.
  * @property {function(Object[]):Object[]} [transformItems] Function to transform the items passed to the templates.
  */
 
@@ -52,22 +45,20 @@ Full documentation available at https://community.algolia.com/instantsearch.js/v
  * var customHits = instantsearch.connectors.connectHits(renderFn);
  *
  * // mount widget on the page
- * search.addWidget(
+ * search.addWidgets([
  *   customHits({
  *     containerNode: $('#custom-hits-container'),
  *   })
- * );
+ * ]);
  */
-export default function connectHits(renderFn, unmountFn) {
-  checkRendering(renderFn, usage);
+export default function connectHits(renderFn, unmountFn = noop) {
+  checkRendering(renderFn, withUsage());
 
   return (widgetParams = {}) => {
-    const { transformItems = items => items } = widgetParams;
+    const { escapeHTML = true, transformItems = items => items } = widgetParams;
 
     return {
-      getConfiguration() {
-        return widgetParams.escapeHits ? tagConfig : undefined;
-      },
+      $$type: 'ais.hits',
 
       init({ instantSearchInstance }) {
         renderFn(
@@ -82,15 +73,26 @@ export default function connectHits(renderFn, unmountFn) {
       },
 
       render({ results, instantSearchInstance }) {
-        results.hits = transformItems(results.hits);
-
-        if (
-          widgetParams.escapeHits &&
-          results.hits &&
-          results.hits.length > 0
-        ) {
+        if (escapeHTML && results.hits.length > 0) {
           results.hits = escapeHits(results.hits);
         }
+
+        const initialEscaped = results.hits.__escaped;
+
+        results.hits = addAbsolutePosition(
+          results.hits,
+          results.page,
+          results.hitsPerPage
+        );
+
+        results.hits = addQueryID(results.hits, results.queryID);
+
+        results.hits = transformItems(results.hits);
+
+        // Make sure the escaped tag stays, even after mapping over the hits.
+        // This prevents the hits from being double-escaped if there are multiple
+        // hits widgets mounted on the page.
+        results.hits.__escaped = initialEscaped;
 
         renderFn(
           {
@@ -103,8 +105,30 @@ export default function connectHits(renderFn, unmountFn) {
         );
       },
 
-      dispose() {
+      dispose({ state }) {
         unmountFn();
+
+        if (!escapeHTML) {
+          return state;
+        }
+
+        return state.setQueryParameters(
+          Object.keys(TAG_PLACEHOLDER).reduce(
+            (acc, key) => ({
+              ...acc,
+              [key]: undefined,
+            }),
+            {}
+          )
+        );
+      },
+
+      getWidgetSearchParameters(state) {
+        if (!escapeHTML) {
+          return state;
+        }
+
+        return state.setQueryParameters(TAG_PLACEHOLDER);
       },
     };
   };
